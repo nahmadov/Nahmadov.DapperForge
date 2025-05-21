@@ -15,31 +15,20 @@ public class DapperDbContext(IDapperConnectionProvider provider) : IDapperDbCont
         var conn = _provider.CreateConnection();
         if (conn.State != ConnectionState.Open)
             conn.Open();
-
         return conn;
     }
 
     public async Task<IEnumerable<T>> QueryAsync<T>(string sql, object? param = null)
-    {
-        using var conn = CreateConnection();
-        return await conn.QueryAsync<T>(sql, param);
-    }
+        => await CreateConnection().QueryAsync<T>(sql, param);
 
     public async Task<T?> QueryFirstOrDefaultAsync<T>(string sql, object? param = null)
-    {
-        using var conn = CreateConnection();
-        return await conn.QueryFirstOrDefaultAsync<T>(sql, param);
-    }
+        => await CreateConnection().QueryFirstOrDefaultAsync<T>(sql, param);
 
     public async Task<int> ExecuteAsync(string sql, object? param = null)
-    {
-        using var conn = CreateConnection();
-        return await conn.ExecuteAsync(sql, param);
-    }
+        => await CreateConnection().ExecuteAsync(sql, param);
 
-    public async Task<IDbTransaction> BeginTransactionAsync()
+    public Task<IDbTransaction> BeginTransactionAsync()
     {
-        var conn = CreateConnection();
-        return await Task.FromResult(conn.BeginTransaction());
+        throw new NotImplementedException();
     }
 }
