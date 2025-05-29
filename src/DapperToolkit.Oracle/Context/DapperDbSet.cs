@@ -1,3 +1,5 @@
+using System.Linq.Expressions;
+
 using DapperToolkit.Core.Interfaces;
 
 namespace DapperToolkit.Oracle.Context;
@@ -7,7 +9,7 @@ public class DapperDbSet<T>(DapperDbContext context) : IDapperDbSet<T> where T :
     private readonly DapperDbContext _context = context;
     private readonly string _tableName = typeof(T).Name;
 
-  public async Task<IEnumerable<T>> GetAllAsync()
+    public async Task<IEnumerable<T>> GetAllAsync()
     {
         var sql = $"SELECT * FROM {_tableName}";
         return await _context.QueryAsync<T>(sql);
@@ -33,5 +35,20 @@ public class DapperDbSet<T>(DapperDbContext context) : IDapperDbSet<T> where T :
     {
         var sql = $"DELETE FROM {_tableName} WHERE Id = :Id";
         return await _context.ExecuteAsync(sql, new { Id = id });
+    }
+
+    public Task<IEnumerable<T>> ToListAsync()
+    {
+        throw new NotImplementedException();
+    }
+
+    public Task<T?> FirstOrDefaultAsync(object parameters)
+    {
+        throw new NotImplementedException();
+    }
+
+    public Task<T?> FirstOrDefaultAsync(Expression<Func<T, bool>> predicate)
+    {
+        throw new NotImplementedException();
     }
 }
