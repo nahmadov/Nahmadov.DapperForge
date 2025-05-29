@@ -7,14 +7,11 @@ namespace DapperToolkit.Oracle.Extensions;
 
 public static class DapperOracleServiceCollectionExtensions
 {
-    public static IServiceCollection AddDapperDbContextWithOracle(
+    public static IServiceCollection AddDapperDbContextWithSql<TContext>(
         this IServiceCollection services,
-        IConfiguration configuration,
-        string connectionName = "OracleDb",
+        string connectionString,
         ServiceLifetime lifetime = ServiceLifetime.Scoped)
     {
-        var connStr = configuration.GetConnectionString(connectionName)
-            ?? throw new ArgumentNullException($"Connection string '{connectionName}' not found.");
-        return services.AddDapperDbContext(provider => new OracleConnectionProvider(connStr), lifetime);
+        return services.AddDapperDbContext<OracleConnectionProvider, TContext>(provider => new OracleConnectionProvider(connectionString), lifetime);
     }
 }
