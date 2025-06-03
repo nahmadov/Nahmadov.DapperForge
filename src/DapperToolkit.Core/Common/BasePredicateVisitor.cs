@@ -38,6 +38,11 @@ public abstract class BasePredicateVisitor : ExpressionVisitor
         return node;
     }
 
+    protected override Expression VisitUnary(UnaryExpression node)
+    {
+        throw new NotSupportedException($"Operator {node.NodeType} is not supported.");
+    }
+
     protected override Expression VisitMember(MemberExpression node)
     {
         if (node.Expression != null && node.Expression.NodeType == ExpressionType.Parameter)
