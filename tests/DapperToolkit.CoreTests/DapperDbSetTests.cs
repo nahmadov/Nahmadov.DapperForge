@@ -1,0 +1,47 @@
+using System.Linq.Expressions;
+
+using DapperToolkit.Core.Interfaces;
+
+namespace DapperToolkit.CoreTests;
+
+public class DapperDbSetTests
+{
+    private class FakeDbSet<T> : IDapperDbSet<T> where T : class, new()
+    {
+        public Task<IEnumerable<T>> ToListAsync() => Task.FromResult<IEnumerable<T>>([new T()]);
+
+        public Task<T?> FirstOrDefaultAsync(Expression<Func<T, bool>> predicate) => Task.FromResult<T?>(new T());
+
+        public Task<int> InsertAsync(T entity) => Task.FromResult(1);
+
+        public Task<int> UpdateAsync(T entity) => Task.FromResult(1);
+
+        public Task<int> DeleteAsync(int id) => Task.FromResult(1);
+    }
+
+    private class SampleEntity
+    {
+        public int Id { get; set; }
+    }
+
+    [Fact]
+    public async Task Should_Execute_All_Methods()
+    {
+        var dbSet = new FakeDbSet<SampleEntity>();
+
+        var all = await dbSet.ToListAsync();
+        Assert.Single(all);
+
+        var one = await dbSet.FirstOrDefaultAsync(x => x.Id == 1);
+        Assert.NotNull(one);
+
+        var inserted = await dbSet.InsertAsync(new SampleEntity());
+        Assert.Equal(1, inserted);
+
+        var updated = await dbSet.UpdateAsync(new SampleEntity());
+        Assert.Equal(1, updated);
+
+        var deleted = await dbSet.DeleteAsync(1);
+        Assert.Equal(1, deleted);
+    }
+}
