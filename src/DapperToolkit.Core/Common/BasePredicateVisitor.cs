@@ -1,7 +1,10 @@
 using System.Linq.Expressions;
+using System.Reflection;
 using System.Text;
 
 using Dapper;
+
+using DapperToolkit.Core.Attributes;
 
 namespace DapperToolkit.Core.Common;
 
@@ -47,7 +50,10 @@ public abstract class BasePredicateVisitor : ExpressionVisitor
     {
         if (node.Expression != null && node.Expression.NodeType == ExpressionType.Parameter)
         {
-            _sql.Append(FormatColumn(node.Member.Name));
+            var columnAttr = node.Member.GetCustomAttribute<ColumnNameAttribute>();
+            var columnName = columnAttr?.Name ?? node.Member.Name;
+
+            _sql.Append(FormatColumn(columnName));
             return node;
         }
 
