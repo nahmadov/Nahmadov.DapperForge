@@ -1,34 +1,50 @@
 using System.Linq.Expressions;
+using System.Reflection;
 
+using Dapper;
+
+using DapperToolkit.Core.Attributes;
 using DapperToolkit.Core.Interfaces;
+using DapperToolkit.Core.Mapping;
 
 namespace DapperToolkit.Oracle.Context;
 
-public class DapperDbSet<T>(DapperDbContext context) : IDapperDbSet<T> where T : class
+public class DapperDbSet<T> : IDapperDbSet<T> where T : class
 {
-    private readonly DapperDbContext _context = context;
-    private readonly string _tableName = typeof(T).Name;
-
-    public async Task<IEnumerable<T>> GetAllAsync()
+    private readonly DapperDbContext _context;
+    private readonly string _tableName;
+    public DapperDbSet(DapperDbContext context)
     {
-        var sql = $"SELECT * FROM {_tableName}";
+        _context = context;
+
+        var tableAttr = typeof(T).GetCustomAttribute<TableNameAttribute>();
+        _tableName = tableAttr?.Name ?? typeof(T).Name;
+        SqlMapper.SetTypeMap(typeof(T), new ColumnAttributeTypeMapper<T>());
+    }
+
+    public async Task<IEnumerable<T>> ToListAsync()
+    {
+        var sql = $"SELECT {DapperDbSet<T>.GetProjection()} FROM {_tableName}";
         return await _context.QueryAsync<T>(sql);
     }
 
-    public async Task<T?> GetByIdAsync(int id)
+    public async Task<T?> FirstOrDefaultAsync(Expression<Func<T, bool>> predicate)
     {
-        var sql = $"SELECT * FROM {_tableName} WHERE Id = :Id";
-        return await _context.QueryFirstOrDefaultAsync<T>(sql, new { Id = id });
+        var visitor = new OraclePredicateVisitor();
+        var (whereClause, parameters) = visitor.Translate(predicate.Body);
+
+        var sql = $"SELECT {DapperDbSet<T>.GetProjection()} FROM {_tableName} WHERE {whereClause}";
+        return await _context.QueryFirstOrDefaultAsync<T>(sql, parameters);
     }
 
     public Task<int> InsertAsync(T entity)
     {
-        throw new NotImplementedException("Property mapping generator əlavə olunmalıdır.");
+        throw new NotImplementedException();
     }
 
     public Task<int> UpdateAsync(T entity)
     {
-        throw new NotImplementedException("Property mapping generator əlavə olunmalıdır.");
+        throw new NotImplementedException();
     }
 
     public async Task<int> DeleteAsync(int id)
@@ -37,18 +53,18 @@ public class DapperDbSet<T>(DapperDbContext context) : IDapperDbSet<T> where T :
         return await _context.ExecuteAsync(sql, new { Id = id });
     }
 
-    public Task<IEnumerable<T>> ToListAsync()
+    private static string GetProjection()
     {
-        throw new NotImplementedException();
-    }
-
-    public Task<T?> FirstOrDefaultAsync(object parameters)
-    {
-        throw new NotImplementedException();
-    }
-
-    public Task<T?> FirstOrDefaultAsync(Expression<Func<T, bool>> predicate)
-    {
-        throw new NotImplementedException();
+        var projection = "";
+        typeof(T).GetProperties().ToList().ForEach(prop =>
+        {
+            var attr = prop.GetCustomAttribute<ColumnNameAttribute>();
+            if (attr != null)
+                projection += $"{attr.Name} AS {prop.Name}, ";
+            else
+                projection += $"{prop.Name}, ";
+        });
+        projection = projection.TrimEnd(',', ' ');
+        return string.IsNullOrEmpty(projection.Trim()) ? "*" : projection;
     }
 }
