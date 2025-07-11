@@ -10,4 +10,7 @@ public class TestEntity
 
     [ColumnName("NameNew")]
     public string Name { get; set; } = string.Empty;
+
+    [ColumnName("IsActive")]
+    public bool IsActive { get; set; }
 }
