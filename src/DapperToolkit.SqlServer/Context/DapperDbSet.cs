@@ -75,7 +75,7 @@ public class DapperDbSet<T> : IDapperDbSet<T> where T : class
 
     public async Task<int> DeleteAsync(int id)
     {
-        var sql = $"DELETE FROM {_tableName} WHERE Id = :Id";
+        var sql = $"DELETE FROM {_tableName} WHERE Id = @Id";
         return await _context.ExecuteAsync(sql, new { Id = id });
     }
 
