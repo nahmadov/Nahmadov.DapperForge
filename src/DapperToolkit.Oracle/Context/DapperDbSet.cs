@@ -37,9 +37,22 @@ public class DapperDbSet<T> : IDapperDbSet<T> where T : class
         return await _context.QueryFirstOrDefaultAsync<T>(sql, parameters);
     }
 
-    public Task<int> InsertAsync(T entity)
+    public async Task<int> InsertAsync(T entity)
     {
-        throw new NotImplementedException();
+        var properties = typeof(T).GetProperties()
+            .Where(p => p.Name != "Id")
+            .ToList();
+
+        var columns = string.Join(", ", properties.Select(p =>
+        {
+            var attr = p.GetCustomAttribute<ColumnNameAttribute>();
+            return attr?.Name ?? p.Name;
+        }));
+
+        var values = string.Join(", ", properties.Select(p => $":{p.Name}"));
+
+        var sql = $"INSERT INTO {_tableName} ({columns}) VALUES ({values})";
+        return await _context.ExecuteAsync(sql, entity);
     }
 
     public Task<int> UpdateAsync(T entity)
