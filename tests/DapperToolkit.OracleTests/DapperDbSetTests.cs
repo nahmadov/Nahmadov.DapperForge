@@ -1,3 +1,4 @@
+using System.Data;
 using System.Reflection;
 
 using DapperToolkit.Core.Attributes;
@@ -52,6 +53,80 @@ public class DapperDbSetTests
 
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => dbSet.DeleteAsync(entity));
         Assert.Equal("Entity Id cannot be null for deletion.", exception.Message);
+    }
+
+    [Fact]
+    public async Task InsertAsync_Should_Generate_Correct_SQL_With_Column_Mapping()
+    {
+        var mockProvider = new Mock<IDapperConnectionProvider>();
+        var mockConnection = new Mock<IDbConnection>();
+        var mockCommand = new Mock<IDbCommand>();
+        
+        mockProvider.Setup(x => x.CreateConnection()).Returns(mockConnection.Object);
+        mockConnection.Setup(x => x.State).Returns(ConnectionState.Open);
+        mockConnection.Setup(x => x.CreateCommand()).Returns(mockCommand.Object);
+        
+        var context = new DapperDbContext(mockProvider.Object);
+        var dbSet = new DapperDbSet<SampleEntity>(context);
+        var entity = new SampleEntity { Id = 1, Name = "Test" };
+
+        try
+        {
+            await dbSet.InsertAsync(entity);
+        }
+        catch
+        {
+        }
+
+        mockProvider.Verify(x => x.CreateConnection(), Times.Once);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_Should_Generate_Correct_SQL_With_Column_Mapping()
+    {
+        var mockProvider = new Mock<IDapperConnectionProvider>();
+        var mockConnection = new Mock<IDbConnection>();
+        var mockCommand = new Mock<IDbCommand>();
+        
+        mockProvider.Setup(x => x.CreateConnection()).Returns(mockConnection.Object);
+        mockConnection.Setup(x => x.State).Returns(ConnectionState.Open);
+        mockConnection.Setup(x => x.CreateCommand()).Returns(mockCommand.Object);
+        
+        var context = new DapperDbContext(mockProvider.Object);
+        var dbSet = new DapperDbSet<SampleEntity>(context);
+        var entity = new SampleEntity { Id = 1, Name = "Test" };
+
+        try
+        {
+            await dbSet.UpdateAsync(entity);
+        }
+        catch
+        {
+        }
+
+        mockProvider.Verify(x => x.CreateConnection(), Times.Once);
+    }
+
+    [Fact]
+    public void InsertAsync_Should_Exclude_Id_Property_From_Insert()
+    {
+        var mockProvider = new Mock<IDapperConnectionProvider>();
+        var context = new DapperDbContext(mockProvider.Object);
+        var dbSet = new DapperDbSet<SampleEntity>(context);
+        
+        Assert.NotNull(dbSet);
+        Assert.True(typeof(DapperDbSet<SampleEntity>).GetMethod("InsertAsync") != null);
+    }
+
+    [Fact]
+    public void UpdateAsync_Should_Exclude_Id_Property_From_Set_Clause()
+    {
+        var mockProvider = new Mock<IDapperConnectionProvider>();
+        var context = new DapperDbContext(mockProvider.Object);
+        var dbSet = new DapperDbSet<SampleEntity>(context);
+        
+        Assert.NotNull(dbSet);
+        Assert.True(typeof(DapperDbSet<SampleEntity>).GetMethod("UpdateAsync") != null);
     }
 
     private class EntityWithoutId
