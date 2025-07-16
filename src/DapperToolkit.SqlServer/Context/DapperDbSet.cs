@@ -79,6 +79,29 @@ public class DapperDbSet<T> : IDapperDbSet<T> where T : class
         return await _context.ExecuteAsync(sql, new { Id = id });
     }
 
+    public async Task<int> DeleteAsync(Expression<Func<T, bool>> predicate)
+    {
+        var visitor = new SqlServerPredicateVisitor();
+        var (whereClause, parameters) = visitor.Translate(predicate.Body);
+
+        var sql = $"DELETE FROM {_tableName} WHERE {whereClause}";
+        return await _context.ExecuteAsync(sql, parameters);
+    }
+
+    public async Task<int> DeleteAsync(T entity)
+    {
+        var idProperty = typeof(T).GetProperty("Id");
+        if (idProperty == null)
+            throw new InvalidOperationException("Entity must have an Id property for deletion.");
+
+        var idValue = idProperty.GetValue(entity);
+        if (idValue == null)
+            throw new InvalidOperationException("Entity Id cannot be null for deletion.");
+
+        var sql = $"DELETE FROM {_tableName} WHERE Id = @Id";
+        return await _context.ExecuteAsync(sql, new { Id = idValue });
+    }
+
     private static string GetProjection()
     {
         var projection = "";

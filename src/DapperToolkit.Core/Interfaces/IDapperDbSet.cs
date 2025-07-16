@@ -9,4 +9,6 @@ public interface IDapperDbSet<T> where T : class
     Task<int> InsertAsync(T entity);
     Task<int> UpdateAsync(T entity);
     Task<int> DeleteAsync(int id);
+    Task<int> DeleteAsync(Expression<Func<T, bool>> predicate);
+    Task<int> DeleteAsync(T entity);
 }

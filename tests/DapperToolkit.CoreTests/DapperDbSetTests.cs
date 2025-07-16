@@ -17,6 +17,10 @@ public class DapperDbSetTests
         public Task<int> UpdateAsync(T entity) => Task.FromResult(1);
 
         public Task<int> DeleteAsync(int id) => Task.FromResult(1);
+
+        public Task<int> DeleteAsync(Expression<Func<T, bool>> predicate) => Task.FromResult(1);
+
+        public Task<int> DeleteAsync(T entity) => Task.FromResult(1);
     }
 
     private class SampleEntity
@@ -43,5 +47,11 @@ public class DapperDbSetTests
 
         var deleted = await dbSet.DeleteAsync(1);
         Assert.Equal(1, deleted);
+
+        var deletedByPredicate = await dbSet.DeleteAsync(x => x.Id == 1);
+        Assert.Equal(1, deletedByPredicate);
+
+        var deletedByEntity = await dbSet.DeleteAsync(new SampleEntity { Id = 1 });
+        Assert.Equal(1, deletedByEntity);
     }
 }
