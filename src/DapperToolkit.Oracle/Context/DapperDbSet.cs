@@ -55,10 +55,22 @@ public class DapperDbSet<T> : IDapperDbSet<T> where T : class
         return await _context.ExecuteAsync(sql, entity);
     }
 
-    public Task<int> UpdateAsync(T entity)
+  public async Task<int> UpdateAsync(T entity)
+  {
+    var properties = typeof(T).GetProperties()
+        .Where(p => p.Name != "Id")
+        .ToList();
+
+    var setClause = string.Join(", ", properties.Select(p =>
     {
-        throw new NotImplementedException();
-    }
+      var attr = p.GetCustomAttribute<ColumnNameAttribute>();
+      var columnName = attr?.Name ?? p.Name;
+      return $"{columnName} = :{p.Name}";
+    }));
+
+    var sql = $"UPDATE {_tableName} SET {setClause} WHERE Id = :Id";
+    return await _context.ExecuteAsync(sql, entity);
+  }
 
     public async Task<int> DeleteAsync(int id)
     {
