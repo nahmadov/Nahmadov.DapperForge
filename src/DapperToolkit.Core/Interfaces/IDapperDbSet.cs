@@ -15,4 +15,6 @@ public interface IDapperDbSet<T> where T : class
     Task<bool> AnyAsync(Expression<Func<T, bool>> predicate);
     Task<int> CountAsync();
     Task<int> CountAsync(Expression<Func<T, bool>> predicate);
+    Task<IEnumerable<T>> PageAsync(int pageNumber, int pageSize);
+    Task<(IEnumerable<T> Data, int TotalCount)> PageWithCountAsync(int pageNumber, int pageSize);
 }

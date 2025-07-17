@@ -154,6 +154,51 @@ public class DapperDbSetTests
         Assert.True(typeof(DapperDbSet<SampleEntity>).GetMethod("CountAsync", new[] { typeof(Expression<Func<SampleEntity, bool>>) }) != null);
     }
 
+    [Fact]
+    public void PageAsync_Methods_Should_Exist()
+    {
+        var mockProvider = new Mock<IDapperConnectionProvider>();
+        var context = new DapperDbContext(mockProvider.Object);
+        var dbSet = new DapperDbSet<SampleEntity>(context);
+        
+        Assert.NotNull(dbSet);
+        Assert.True(typeof(DapperDbSet<SampleEntity>).GetMethod("PageAsync", new[] { typeof(int), typeof(int) }) != null);
+        Assert.True(typeof(DapperDbSet<SampleEntity>).GetMethod("PageWithCountAsync", new[] { typeof(int), typeof(int) }) != null);
+    }
+
+    [Fact]
+    public async Task PageAsync_Should_Throw_ArgumentException_For_Invalid_PageNumber()
+    {
+        var mockProvider = new Mock<IDapperConnectionProvider>();
+        var context = new DapperDbContext(mockProvider.Object);
+        var dbSet = new DapperDbSet<SampleEntity>(context);
+
+        await Assert.ThrowsAsync<ArgumentException>(() => dbSet.PageAsync(0, 10));
+        await Assert.ThrowsAsync<ArgumentException>(() => dbSet.PageAsync(-1, 10));
+    }
+
+    [Fact]
+    public async Task PageAsync_Should_Throw_ArgumentException_For_Invalid_PageSize()
+    {
+        var mockProvider = new Mock<IDapperConnectionProvider>();
+        var context = new DapperDbContext(mockProvider.Object);
+        var dbSet = new DapperDbSet<SampleEntity>(context);
+
+        await Assert.ThrowsAsync<ArgumentException>(() => dbSet.PageAsync(1, 0));
+        await Assert.ThrowsAsync<ArgumentException>(() => dbSet.PageAsync(1, -1));
+    }
+
+    [Fact]
+    public async Task PageWithCountAsync_Should_Throw_ArgumentException_For_Invalid_Parameters()
+    {
+        var mockProvider = new Mock<IDapperConnectionProvider>();
+        var context = new DapperDbContext(mockProvider.Object);
+        var dbSet = new DapperDbSet<SampleEntity>(context);
+
+        await Assert.ThrowsAsync<ArgumentException>(() => dbSet.PageWithCountAsync(0, 10));
+        await Assert.ThrowsAsync<ArgumentException>(() => dbSet.PageWithCountAsync(1, 0));
+    }
+
     private class EntityWithoutId
     {
         public string Name { get; set; } = string.Empty;

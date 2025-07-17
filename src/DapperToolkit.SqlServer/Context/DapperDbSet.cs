@@ -134,6 +134,33 @@ public class DapperDbSet<T> : IDapperDbSet<T> where T : class
         return await _context.QueryFirstOrDefaultAsync<int>(sql, parameters);
     }
 
+    public async Task<IEnumerable<T>> PageAsync(int pageNumber, int pageSize)
+    {
+        if (pageNumber < 1) throw new ArgumentException("Page number must be greater than 0", nameof(pageNumber));
+        if (pageSize < 1) throw new ArgumentException("Page size must be greater than 0", nameof(pageSize));
+
+        var offset = (pageNumber - 1) * pageSize;
+        var sql = $"SELECT {GetProjection()} FROM {_tableName} ORDER BY Id OFFSET {offset} ROWS FETCH NEXT {pageSize} ROWS ONLY";
+        return await _context.QueryAsync<T>(sql);
+    }
+
+    public async Task<(IEnumerable<T> Data, int TotalCount)> PageWithCountAsync(int pageNumber, int pageSize)
+    {
+        if (pageNumber < 1) throw new ArgumentException("Page number must be greater than 0", nameof(pageNumber));
+        if (pageSize < 1) throw new ArgumentException("Page size must be greater than 0", nameof(pageSize));
+
+        var offset = (pageNumber - 1) * pageSize;
+        var sql = $@"
+            SELECT {GetProjection()} FROM {_tableName} ORDER BY Id OFFSET {offset} ROWS FETCH NEXT {pageSize} ROWS ONLY;
+            SELECT COUNT(*) FROM {_tableName};";
+        
+        using var multi = await _context.Connection.QueryMultipleAsync(sql);
+        var data = await multi.ReadAsync<T>();
+        var totalCount = await multi.ReadSingleAsync<int>();
+        
+        return (data, totalCount);
+    }
+
     private static string GetProjection()
     {
         var projection = "";

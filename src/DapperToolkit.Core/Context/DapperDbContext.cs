@@ -9,6 +9,7 @@ namespace DapperToolkit.Core.Context;
 public class DapperDbContext(IDapperConnectionProvider provider) : IDapperDbContext
 {
     private readonly IDapperConnectionProvider _provider = provider;
+    public IDbConnection Connection => CreateConnection();
 
     private IDbConnection CreateConnection()
     {

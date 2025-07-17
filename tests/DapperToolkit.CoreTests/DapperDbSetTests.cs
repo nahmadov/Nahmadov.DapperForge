@@ -29,6 +29,10 @@ public class DapperDbSetTests
         public Task<int> CountAsync() => Task.FromResult(5);
 
         public Task<int> CountAsync(Expression<Func<T, bool>> predicate) => Task.FromResult(3);
+
+        public Task<IEnumerable<T>> PageAsync(int pageNumber, int pageSize) => Task.FromResult<IEnumerable<T>>([new T(), new T()]);
+
+        public Task<(IEnumerable<T> Data, int TotalCount)> PageWithCountAsync(int pageNumber, int pageSize) => Task.FromResult<(IEnumerable<T>, int)>(([new T(), new T()], 10));
     }
 
     private class SampleEntity
@@ -73,5 +77,12 @@ public class DapperDbSetTests
 
         var countWithPredicate = await dbSet.CountAsync(x => x.Id == 1);
         Assert.Equal(3, countWithPredicate);
+
+        var pagedData = await dbSet.PageAsync(1, 2);
+        Assert.Equal(2, pagedData.Count());
+
+        var pagedWithCount = await dbSet.PageWithCountAsync(1, 2);
+        Assert.Equal(2, pagedWithCount.Data.Count());
+        Assert.Equal(10, pagedWithCount.TotalCount);
     }
 }
