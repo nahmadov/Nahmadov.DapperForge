@@ -102,6 +102,23 @@ public class DapperDbSet<T> : IDapperDbSet<T> where T : class
         return await _context.ExecuteAsync(sql, new { Id = idValue });
     }
 
+    public async Task<bool> AnyAsync()
+    {
+        var sql = $"SELECT CASE WHEN EXISTS(SELECT 1 FROM {_tableName}) THEN 1 ELSE 0 END";
+        var result = await _context.QueryFirstOrDefaultAsync<int>(sql);
+        return result == 1;
+    }
+
+    public async Task<bool> AnyAsync(Expression<Func<T, bool>> predicate)
+    {
+        var visitor = new SqlServerPredicateVisitor();
+        var (whereClause, parameters) = visitor.Translate(predicate.Body);
+
+        var sql = $"SELECT CASE WHEN EXISTS(SELECT 1 FROM {_tableName} WHERE {whereClause}) THEN 1 ELSE 0 END";
+        var result = await _context.QueryFirstOrDefaultAsync<int>(sql, parameters);
+        return result == 1;
+    }
+
     private static string GetProjection()
     {
         var projection = "";

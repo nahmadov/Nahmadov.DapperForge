@@ -130,6 +130,18 @@ public class DapperDbSetTests
         Assert.True(typeof(DapperDbSet<SampleEntity>).GetMethod("UpdateAsync") != null);
     }
 
+    [Fact]
+    public void AnyAsync_Methods_Should_Exist()
+    {
+        var mockProvider = new Mock<IDapperConnectionProvider>();
+        var context = new DapperDbContext(mockProvider.Object);
+        var dbSet = new DapperDbSet<SampleEntity>(context);
+        
+        Assert.NotNull(dbSet);
+        Assert.True(typeof(DapperDbSet<SampleEntity>).GetMethod("AnyAsync", new Type[0]) != null);
+        Assert.True(typeof(DapperDbSet<SampleEntity>).GetMethod("AnyAsync", new[] { typeof(Expression<Func<SampleEntity, bool>>) }) != null);
+    }
+
     private class EntityWithoutId
     {
         public string Name { get; set; } = string.Empty;
