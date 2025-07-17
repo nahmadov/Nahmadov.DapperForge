@@ -25,6 +25,10 @@ public class DapperDbSetTests
         public Task<bool> AnyAsync() => Task.FromResult(true);
 
         public Task<bool> AnyAsync(Expression<Func<T, bool>> predicate) => Task.FromResult(true);
+
+        public Task<int> CountAsync() => Task.FromResult(5);
+
+        public Task<int> CountAsync(Expression<Func<T, bool>> predicate) => Task.FromResult(3);
     }
 
     private class SampleEntity
@@ -63,5 +67,11 @@ public class DapperDbSetTests
 
         var anyWithPredicate = await dbSet.AnyAsync(x => x.Id == 1);
         Assert.True(anyWithPredicate);
+
+        var count = await dbSet.CountAsync();
+        Assert.Equal(5, count);
+
+        var countWithPredicate = await dbSet.CountAsync(x => x.Id == 1);
+        Assert.Equal(3, countWithPredicate);
     }
 }

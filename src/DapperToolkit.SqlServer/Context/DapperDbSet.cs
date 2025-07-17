@@ -119,6 +119,21 @@ public class DapperDbSet<T> : IDapperDbSet<T> where T : class
         return result == 1;
     }
 
+    public async Task<int> CountAsync()
+    {
+        var sql = $"SELECT COUNT(*) FROM {_tableName}";
+        return await _context.QueryFirstOrDefaultAsync<int>(sql);
+    }
+
+    public async Task<int> CountAsync(Expression<Func<T, bool>> predicate)
+    {
+        var visitor = new SqlServerPredicateVisitor();
+        var (whereClause, parameters) = visitor.Translate(predicate.Body);
+
+        var sql = $"SELECT COUNT(*) FROM {_tableName} WHERE {whereClause}";
+        return await _context.QueryFirstOrDefaultAsync<int>(sql, parameters);
+    }
+
     private static string GetProjection()
     {
         var projection = "";
