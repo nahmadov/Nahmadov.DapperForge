@@ -67,4 +67,18 @@ public abstract class BasePredicateVisitor : ExpressionVisitor
         _sql.Append(NextParam(node.Value!));
         return node;
     }
+
+    protected override Expression VisitMethodCall(MethodCallExpression node)
+    {
+        if (node.Method.Name == "Contains" && node.Method.DeclaringType == typeof(string))
+        {
+            Visit(node.Object!);
+            _sql.Append(" LIKE ");
+            var value = Expression.Lambda(node.Arguments[0]).Compile().DynamicInvoke();
+            _sql.Append(NextParam($"%{value}%"));
+            return node;
+        }
+
+        throw new NotSupportedException($"Method {node.Method.Name} is not supported.");
+    }
 }
