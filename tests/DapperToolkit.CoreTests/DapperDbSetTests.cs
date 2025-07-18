@@ -10,6 +10,8 @@ public class DapperDbSetTests
     {
         public Task<IEnumerable<T>> ToListAsync() => Task.FromResult<IEnumerable<T>>([new T()]);
 
+        public Task<IEnumerable<T>> ToListAsync(Expression<Func<T, object>> orderBy, bool ascending = true) => Task.FromResult<IEnumerable<T>>([new T()]);
+
         public Task<T?> FirstOrDefaultAsync(Expression<Func<T, bool>> predicate) => Task.FromResult<T?>(new T());
 
         public Task<int> InsertAsync(T entity) => Task.FromResult(1);
@@ -32,7 +34,11 @@ public class DapperDbSetTests
 
         public Task<IEnumerable<T>> PageAsync(int pageNumber, int pageSize) => Task.FromResult<IEnumerable<T>>([new T(), new T()]);
 
+        public Task<IEnumerable<T>> PageAsync(int pageNumber, int pageSize, Expression<Func<T, object>> orderBy, bool ascending = true) => Task.FromResult<IEnumerable<T>>([new T(), new T()]);
+
         public Task<(IEnumerable<T> Data, int TotalCount)> PageWithCountAsync(int pageNumber, int pageSize) => Task.FromResult<(IEnumerable<T>, int)>(([new T(), new T()], 10));
+
+        public Task<(IEnumerable<T> Data, int TotalCount)> PageWithCountAsync(int pageNumber, int pageSize, Expression<Func<T, object>> orderBy, bool ascending = true) => Task.FromResult<(IEnumerable<T>, int)>(([new T(), new T()], 10));
     }
 
     private class SampleEntity

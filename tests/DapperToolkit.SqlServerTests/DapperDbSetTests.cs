@@ -5,6 +5,7 @@ using System.Reflection;
 using DapperToolkit.Core.Attributes;
 using DapperToolkit.Core.Interfaces;
 using DapperToolkit.SqlServer.Context;
+using DapperToolkit.SqlServer;
 
 using Moq;
 
@@ -197,6 +198,74 @@ public class DapperDbSetTests
 
         await Assert.ThrowsAsync<ArgumentException>(() => dbSet.PageWithCountAsync(0, 10));
         await Assert.ThrowsAsync<ArgumentException>(() => dbSet.PageWithCountAsync(1, 0));
+    }
+
+    [Fact]
+    public void OrderBy_Visitor_Should_Translate_Simple_Property_Expression()
+    {
+        var visitor = new SqlServerOrderByVisitor();
+        Expression<Func<SampleEntity, object>> orderBy = x => x.Name;
+        
+        var result = visitor.TranslateOrderBy(orderBy, true);
+        
+        Assert.Equal("Name ASC", result);
+    }
+
+    [Fact]
+    public void OrderBy_Visitor_Should_Translate_Property_With_Column_Attribute()
+    {
+        var visitor = new SqlServerOrderByVisitor();
+        Expression<Func<SampleEntity, object>> orderBy = x => x.Id;
+        
+        var result = visitor.TranslateOrderBy(orderBy, true);
+        
+        Assert.Equal("col_id ASC", result);
+    }
+
+    [Fact]
+    public void OrderBy_Visitor_Should_Generate_DESC_For_Descending()
+    {
+        var visitor = new SqlServerOrderByVisitor();
+        Expression<Func<SampleEntity, object>> orderBy = x => x.Name;
+        
+        var result = visitor.TranslateOrderBy(orderBy, false);
+        
+        Assert.Equal("Name DESC", result);
+    }
+
+    [Fact]
+    public void ToListAsync_With_OrderBy_Method_Should_Exist()
+    {
+        var mockProvider = new Mock<IDapperConnectionProvider>();
+        var context = new DapperDbContext(mockProvider.Object);
+        var dbSet = new DapperDbSet<SampleEntity>(context);
+        
+        Assert.NotNull(dbSet);
+        Assert.True(typeof(DapperDbSet<SampleEntity>).GetMethod("ToListAsync", new[] { typeof(Expression<Func<SampleEntity, object>>), typeof(bool) }) != null);
+    }
+
+    [Fact]
+    public void PageAsync_With_OrderBy_Methods_Should_Exist()
+    {
+        var mockProvider = new Mock<IDapperConnectionProvider>();
+        var context = new DapperDbContext(mockProvider.Object);
+        var dbSet = new DapperDbSet<SampleEntity>(context);
+        
+        Assert.NotNull(dbSet);
+        Assert.True(typeof(DapperDbSet<SampleEntity>).GetMethod("PageAsync", new[] { typeof(int), typeof(int), typeof(Expression<Func<SampleEntity, object>>), typeof(bool) }) != null);
+        Assert.True(typeof(DapperDbSet<SampleEntity>).GetMethod("PageWithCountAsync", new[] { typeof(int), typeof(int), typeof(Expression<Func<SampleEntity, object>>), typeof(bool) }) != null);
+    }
+
+    [Fact]
+    public async Task PageAsync_With_OrderBy_Should_Throw_ArgumentException_For_Invalid_Parameters()
+    {
+        var mockProvider = new Mock<IDapperConnectionProvider>();
+        var context = new DapperDbContext(mockProvider.Object);
+        var dbSet = new DapperDbSet<SampleEntity>(context);
+        Expression<Func<SampleEntity, object>> orderBy = x => x.Name;
+
+        await Assert.ThrowsAsync<ArgumentException>(() => dbSet.PageAsync(0, 10, orderBy));
+        await Assert.ThrowsAsync<ArgumentException>(() => dbSet.PageAsync(1, 0, orderBy));
     }
 
     private class EntityWithoutId
