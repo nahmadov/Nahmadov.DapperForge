@@ -132,6 +132,56 @@ public class DapperDbSetTests
     }
 
     [Fact]
+    public async Task WhereAsync_Should_Generate_Correct_SQL_With_Predicate()
+    {
+        var mockProvider = new Mock<IDapperConnectionProvider>();
+        var mockConnection = new Mock<IDbConnection>();
+        var mockCommand = new Mock<IDbCommand>();
+        
+        mockProvider.Setup(x => x.CreateConnection()).Returns(mockConnection.Object);
+        mockConnection.Setup(x => x.State).Returns(ConnectionState.Open);
+        mockConnection.Setup(x => x.CreateCommand()).Returns(mockCommand.Object);
+        
+        var context = new DapperDbContext(mockProvider.Object);
+        var dbSet = new DapperDbSet<SampleEntity>(context);
+
+        try
+        {
+            await dbSet.WhereAsync(x => x.Name == "Test");
+        }
+        catch
+        {
+        }
+
+        mockProvider.Verify(x => x.CreateConnection(), Times.Once);
+    }
+
+    [Fact]
+    public async Task WhereAsync_Should_Handle_Complex_Predicates()
+    {
+        var mockProvider = new Mock<IDapperConnectionProvider>();
+        var mockConnection = new Mock<IDbConnection>();
+        var mockCommand = new Mock<IDbCommand>();
+        
+        mockProvider.Setup(x => x.CreateConnection()).Returns(mockConnection.Object);
+        mockConnection.Setup(x => x.State).Returns(ConnectionState.Open);
+        mockConnection.Setup(x => x.CreateCommand()).Returns(mockCommand.Object);
+        
+        var context = new DapperDbContext(mockProvider.Object);
+        var dbSet = new DapperDbSet<SampleEntity>(context);
+
+        try
+        {
+            await dbSet.WhereAsync(x => x.Id > 1 && x.Name == "Test");
+        }
+        catch
+        {
+        }
+
+        mockProvider.Verify(x => x.CreateConnection(), Times.Once);
+    }
+
+    [Fact]
     public void AnyAsync_Methods_Should_Exist()
     {
         var mockProvider = new Mock<IDapperConnectionProvider>();

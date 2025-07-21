@@ -38,6 +38,15 @@ public class DapperDbSet<T> : IDapperDbSet<T> where T : class
         return await _context.QueryAsync<T>(sql);
     }
 
+    public async Task<IEnumerable<T>> WhereAsync(Expression<Func<T, bool>> predicate)
+    {
+        var visitor = new SqlServerPredicateVisitor();
+        var (whereClause, parameters) = visitor.Translate(predicate.Body);
+
+        var sql = $"SELECT {DapperDbSet<T>.GetProjection()} FROM {_tableName} WHERE {whereClause}";
+        return await _context.QueryAsync<T>(sql, parameters);
+    }
+
     public async Task<T?> FirstOrDefaultAsync(Expression<Func<T, bool>> predicate)
     {
         var visitor = new SqlServerPredicateVisitor();

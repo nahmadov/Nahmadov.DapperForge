@@ -6,6 +6,7 @@ public interface IDapperDbSet<T> where T : class
 {
     Task<IEnumerable<T>> ToListAsync();
     Task<IEnumerable<T>> ToListAsync(Expression<Func<T, object>> orderBy, bool ascending = true);
+    Task<IEnumerable<T>> WhereAsync(Expression<Func<T, bool>> predicate);
     Task<T?> FirstOrDefaultAsync(Expression<Func<T, bool>> predicate);
     Task<int> InsertAsync(T entity);
     Task<int> UpdateAsync(T entity);
