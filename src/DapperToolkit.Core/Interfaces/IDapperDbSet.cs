@@ -15,6 +15,7 @@ public interface IDapperDbSet<T> where T : class
     Task<int> DeleteAsync(T entity);
     Task<bool> AnyAsync();
     Task<bool> AnyAsync(Expression<Func<T, bool>> predicate);
+    Task<bool> ExistsAsync(int id);
     Task<int> CountAsync();
     Task<int> CountAsync(Expression<Func<T, bool>> predicate);
     Task<IEnumerable<T>> PageAsync(int pageNumber, int pageSize);

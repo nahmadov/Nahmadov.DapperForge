@@ -137,6 +137,20 @@ public class DapperDbSet<T> : IDapperDbSet<T> where T : class
         return result == 1;
     }
 
+    public async Task<bool> ExistsAsync(int id)
+    {
+        var idProperty = typeof(T).GetProperty("Id");
+        if (idProperty == null)
+            throw new InvalidOperationException("Entity must have an Id property for existence check.");
+
+        var attr = idProperty.GetCustomAttribute<ColumnNameAttribute>();
+        var columnName = attr?.Name ?? "Id";
+
+        var sql = $"SELECT CASE WHEN EXISTS(SELECT 1 FROM {_tableName} WHERE {columnName} = @Id) THEN 1 ELSE 0 END";
+        var result = await _context.QueryFirstOrDefaultAsync<int>(sql, new { Id = id });
+        return result == 1;
+    }
+
     public async Task<int> CountAsync()
     {
         var sql = $"SELECT COUNT(*) FROM {_tableName}";

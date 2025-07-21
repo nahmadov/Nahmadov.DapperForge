@@ -30,6 +30,8 @@ public class DapperDbSetTests
 
         public Task<bool> AnyAsync(Expression<Func<T, bool>> predicate) => Task.FromResult(true);
 
+        public Task<bool> ExistsAsync(int id) => Task.FromResult(true);
+
         public Task<int> CountAsync() => Task.FromResult(5);
 
         public Task<int> CountAsync(Expression<Func<T, bool>> predicate) => Task.FromResult(3);

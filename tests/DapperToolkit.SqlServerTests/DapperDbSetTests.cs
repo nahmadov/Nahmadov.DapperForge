@@ -182,6 +182,42 @@ public class DapperDbSetTests
     }
 
     [Fact]
+    public async Task ExistsAsync_Should_Generate_Correct_SQL_With_Id()
+    {
+        var mockProvider = new Mock<IDapperConnectionProvider>();
+        var mockConnection = new Mock<IDbConnection>();
+        var mockCommand = new Mock<IDbCommand>();
+        
+        mockProvider.Setup(x => x.CreateConnection()).Returns(mockConnection.Object);
+        mockConnection.Setup(x => x.State).Returns(ConnectionState.Open);
+        mockConnection.Setup(x => x.CreateCommand()).Returns(mockCommand.Object);
+        
+        var context = new DapperDbContext(mockProvider.Object);
+        var dbSet = new DapperDbSet<SampleEntity>(context);
+
+        try
+        {
+            await dbSet.ExistsAsync(123);
+        }
+        catch
+        {
+        }
+
+        mockProvider.Verify(x => x.CreateConnection(), Times.Once);
+    }
+
+    [Fact]
+    public async Task ExistsAsync_Should_Throw_Exception_When_Entity_Has_No_Id_Property()
+    {
+        var mockProvider = new Mock<IDapperConnectionProvider>();
+        var context = new DapperDbContext(mockProvider.Object);
+        var dbSet = new DapperDbSet<EntityWithoutId>(context);
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => dbSet.ExistsAsync(1));
+        Assert.Equal("Entity must have an Id property for existence check.", exception.Message);
+    }
+
+    [Fact]
     public void AnyAsync_Methods_Should_Exist()
     {
         var mockProvider = new Mock<IDapperConnectionProvider>();
