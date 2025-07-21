@@ -86,13 +86,27 @@ public class DapperDbSet<T> : IDapperDbSet<T> where T : class
       return $"{columnName} = :{p.Name}";
     }));
 
-    var sql = $"UPDATE {_tableName} SET {setClause} WHERE Id = :Id";
+    var idProperty = typeof(T).GetProperty("Id");
+    if (idProperty == null)
+        throw new InvalidOperationException("Entity must have an Id property for update.");
+
+    var idAttr = idProperty.GetCustomAttribute<ColumnNameAttribute>();
+    var idColumnName = idAttr?.Name ?? "Id";
+
+    var sql = $"UPDATE {_tableName} SET {setClause} WHERE {idColumnName} = :Id";
     return await _context.ExecuteAsync(sql, entity);
   }
 
     public async Task<int> DeleteAsync(int id)
     {
-        var sql = $"DELETE FROM {_tableName} WHERE Id = :Id";
+        var idProperty = typeof(T).GetProperty("Id");
+        if (idProperty == null)
+            throw new InvalidOperationException("Entity must have an Id property for deletion.");
+
+        var idAttr = idProperty.GetCustomAttribute<ColumnNameAttribute>();
+        var idColumnName = idAttr?.Name ?? "Id";
+
+        var sql = $"DELETE FROM {_tableName} WHERE {idColumnName} = :Id";
         return await _context.ExecuteAsync(sql, new { Id = id });
     }
 
@@ -115,7 +129,10 @@ public class DapperDbSet<T> : IDapperDbSet<T> where T : class
         if (idValue == null)
             throw new InvalidOperationException("Entity Id cannot be null for deletion.");
 
-        var sql = $"DELETE FROM {_tableName} WHERE Id = :Id";
+        var idAttr = idProperty.GetCustomAttribute<ColumnNameAttribute>();
+        var idColumnName = idAttr?.Name ?? "Id";
+
+        var sql = $"DELETE FROM {_tableName} WHERE {idColumnName} = :Id";
         return await _context.ExecuteAsync(sql, new { Id = idValue });
     }
 
@@ -170,8 +187,15 @@ public class DapperDbSet<T> : IDapperDbSet<T> where T : class
         if (pageNumber < 1) throw new ArgumentException("Page number must be greater than 0", nameof(pageNumber));
         if (pageSize < 1) throw new ArgumentException("Page size must be greater than 0", nameof(pageSize));
 
+        var idProperty = typeof(T).GetProperty("Id");
+        if (idProperty == null)
+            throw new InvalidOperationException("Entity must have an Id property for pagination.");
+
+        var idAttr = idProperty.GetCustomAttribute<ColumnNameAttribute>();
+        var idColumnName = idAttr?.Name ?? "Id";
+
         var offset = (pageNumber - 1) * pageSize;
-        var sql = $"SELECT {GetProjection()} FROM {_tableName} ORDER BY Id OFFSET {offset} ROWS FETCH NEXT {pageSize} ROWS ONLY";
+        var sql = $"SELECT {GetProjection()} FROM {_tableName} ORDER BY {idColumnName} OFFSET {offset} ROWS FETCH NEXT {pageSize} ROWS ONLY";
         return await _context.QueryAsync<T>(sql);
     }
 
@@ -193,9 +217,16 @@ public class DapperDbSet<T> : IDapperDbSet<T> where T : class
         if (pageNumber < 1) throw new ArgumentException("Page number must be greater than 0", nameof(pageNumber));
         if (pageSize < 1) throw new ArgumentException("Page size must be greater than 0", nameof(pageSize));
 
+        var idProperty = typeof(T).GetProperty("Id");
+        if (idProperty == null)
+            throw new InvalidOperationException("Entity must have an Id property for pagination.");
+
+        var idAttr = idProperty.GetCustomAttribute<ColumnNameAttribute>();
+        var idColumnName = idAttr?.Name ?? "Id";
+
         var offset = (pageNumber - 1) * pageSize;
         var sql = $@"
-            SELECT {GetProjection()} FROM {_tableName} ORDER BY Id OFFSET {offset} ROWS FETCH NEXT {pageSize} ROWS ONLY;
+            SELECT {GetProjection()} FROM {_tableName} ORDER BY {idColumnName} OFFSET {offset} ROWS FETCH NEXT {pageSize} ROWS ONLY;
             SELECT COUNT(*) FROM {_tableName};";
         
         using var multi = await _context.Connection.QueryMultipleAsync(sql);
