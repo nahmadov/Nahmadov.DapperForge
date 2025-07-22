@@ -11,7 +11,7 @@ using DapperToolkit.SqlServer.Common;
 
 namespace DapperToolkit.SqlServer.Context;
 
-public class DapperDbSet<T> : IDapperDbSet<T> where T : class
+public class DapperDbSet<T> : IDapperDbSet<T>, IIncludableDbSet<T> where T : class
 {
     private readonly DapperDbContext _context;
     private readonly string _tableName;
@@ -396,6 +396,83 @@ public class DapperDbSet<T> : IDapperDbSet<T> where T : class
         }
         
         return entity1.Equals(entity2);
+    }
+
+    public IIncludableQueryable<T, TProperty> Include<TProperty>(Expression<Func<T, TProperty>> includeExpression)
+    {
+        var include = new IncludeInfo
+        {
+            NavigationExpression = includeExpression,
+            ParentType = typeof(T),
+            PropertyType = typeof(TProperty),
+            IsCollection = IsCollectionType(typeof(TProperty))
+        };
+
+        return new IncludableQueryable<T, TProperty>(this, new List<IncludeInfo> { include });
+    }
+
+    public IIncludableQueryable<T, TProperty> Include<TProperty>(Expression<Func<T, bool>> predicate, Expression<Func<T, TProperty>> includeExpression)
+    {
+        var include = new IncludeInfo
+        {
+            NavigationExpression = includeExpression,
+            ParentType = typeof(T),
+            PropertyType = typeof(TProperty),
+            IsCollection = IsCollectionType(typeof(TProperty)),
+            Predicate = predicate as Expression<Func<object, bool>>
+        };
+
+        return new IncludableQueryable<T, TProperty>(this, new List<IncludeInfo> { include });
+    }
+
+    public async Task<IEnumerable<T>> ExecuteWithIncludesAsync(List<IncludeInfo> includes)
+    {
+        if (includes.Count == 1)
+        {
+            var include = includes[0];
+            if (include.Predicate != null)
+            {
+                var predicate = include.Predicate as Expression<Func<T, bool>>;
+                var includeExpr = include.NavigationExpression as Expression<Func<T, object>>;
+                if (predicate != null && includeExpr != null)
+                {
+                    return await IncludeAsync(predicate, includeExpr);
+                }
+            }
+            else
+            {
+                var includeExpr = include.NavigationExpression as Expression<Func<T, object>>;
+                if (includeExpr != null)
+                {
+                    return await IncludeAsync(includeExpr);
+                }
+            }
+        }
+
+        return await ExecuteMultiLevelIncludeAsync(includes);
+    }
+
+    private async Task<IEnumerable<T>> ExecuteMultiLevelIncludeAsync(List<IncludeInfo> includes)
+    {
+        var visitor = new SqlServerMultiLevelIncludeVisitor(typeof(T));
+        var sql = visitor.GenerateMultiLevelIncludeQuery<T>(includes);
+        var result = await _context.Connection.QueryAsync(sql.Sql, sql.Parameters);
+        return MapMultiLevelResults(result, visitor.GetIncludeLevels());
+    }
+
+    private IEnumerable<T> MapMultiLevelResults(IEnumerable<dynamic> results, List<IncludeLevel> includeLevels)
+    {
+        var mapper = new MultiLevelResultMapper<T>(includeLevels);
+        return mapper.MapResults(results);
+    }
+
+    private bool IsCollectionType(Type type)
+    {
+        return type.IsGenericType &&
+               (typeof(IEnumerable<>).IsAssignableFrom(type.GetGenericTypeDefinition()) ||
+                type.GetGenericTypeDefinition() == typeof(List<>) ||
+                type.GetGenericTypeDefinition() == typeof(ICollection<>) ||
+                type.GetGenericTypeDefinition() == typeof(IList<>));
     }
 
     private static string GetProjection()

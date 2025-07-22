@@ -25,4 +25,6 @@ public interface IDapperDbSet<T> where T : class
     Task<(IEnumerable<T> Data, int TotalCount)> PageWithCountAsync(int pageNumber, int pageSize, Expression<Func<T, object>> orderBy, bool ascending = true);
     Task<IEnumerable<T>> IncludeAsync<TProperty>(Expression<Func<T, TProperty>> includeExpression);
     Task<IEnumerable<T>> IncludeAsync<TProperty>(Expression<Func<T, bool>> predicate, Expression<Func<T, TProperty>> includeExpression);
+    IIncludableQueryable<T, TProperty> Include<TProperty>(Expression<Func<T, TProperty>> includeExpression);
+    IIncludableQueryable<T, TProperty> Include<TProperty>(Expression<Func<T, bool>> predicate, Expression<Func<T, TProperty>> includeExpression);
 }

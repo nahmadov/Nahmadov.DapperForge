@@ -49,6 +49,10 @@ public class DapperDbSetTests
         public Task<IEnumerable<T>> IncludeAsync<TProperty>(Expression<Func<T, TProperty>> includeExpression) => Task.FromResult<IEnumerable<T>>([new T()]);
 
         public Task<IEnumerable<T>> IncludeAsync<TProperty>(Expression<Func<T, bool>> predicate, Expression<Func<T, TProperty>> includeExpression) => Task.FromResult<IEnumerable<T>>([new T()]);
+
+        public IIncludableQueryable<T, TProperty> Include<TProperty>(Expression<Func<T, TProperty>> includeExpression) => throw new NotImplementedException();
+
+        public IIncludableQueryable<T, TProperty> Include<TProperty>(Expression<Func<T, bool>> predicate, Expression<Func<T, TProperty>> includeExpression) => throw new NotImplementedException();
     }
 
     private class SampleEntity
