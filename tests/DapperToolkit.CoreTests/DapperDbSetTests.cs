@@ -45,6 +45,10 @@ public class DapperDbSetTests
         public Task<(IEnumerable<T> Data, int TotalCount)> PageWithCountAsync(int pageNumber, int pageSize) => Task.FromResult<(IEnumerable<T>, int)>(([new T(), new T()], 10));
 
         public Task<(IEnumerable<T> Data, int TotalCount)> PageWithCountAsync(int pageNumber, int pageSize, Expression<Func<T, object>> orderBy, bool ascending = true) => Task.FromResult<(IEnumerable<T>, int)>(([new T(), new T()], 10));
+
+        public Task<IEnumerable<T>> IncludeAsync<TProperty>(Expression<Func<T, TProperty>> includeExpression) => Task.FromResult<IEnumerable<T>>([new T()]);
+
+        public Task<IEnumerable<T>> IncludeAsync<TProperty>(Expression<Func<T, bool>> predicate, Expression<Func<T, TProperty>> includeExpression) => Task.FromResult<IEnumerable<T>>([new T()]);
     }
 
     private class SampleEntity

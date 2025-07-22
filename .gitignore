@@ -374,3 +374,4 @@ src/AzerigasCustomerServices.Endpoint/database.sqlite-shm
 src/AzerigasCustomerServices.Endpoint/database.sqlite-wal
 /src/AzerigasCustomerServices.Endpoint/secrets.json
 TestConsoleApp/
+database/
