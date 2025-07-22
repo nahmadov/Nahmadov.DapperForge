@@ -46,6 +46,15 @@ public class DapperDbSet<T> : IDapperDbSet<T> where T : class
         return await _context.QueryAsync<T>(sql, parameters);
     }
 
+    public async Task<IEnumerable<TResult>> SelectAsync<TResult>(Expression<Func<T, TResult>> selector)
+    {
+        var projectionVisitor = new OracleProjectionVisitor(typeof(T));
+        var projection = projectionVisitor.TranslateProjection(selector);
+
+        var sql = $"SELECT {projection} FROM {_tableName}";
+        return await _context.QueryAsync<TResult>(sql);
+    }
+
     public async Task<T?> FirstOrDefaultAsync(Expression<Func<T, bool>> predicate)
     {
         var visitor = new OraclePredicateVisitor();

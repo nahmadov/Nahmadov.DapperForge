@@ -14,6 +14,8 @@ public class DapperDbSetTests
 
         public Task<IEnumerable<T>> WhereAsync(Expression<Func<T, bool>> predicate) => Task.FromResult<IEnumerable<T>>([new T()]);
 
+        public Task<IEnumerable<TResult>> SelectAsync<TResult>(Expression<Func<T, TResult>> selector) => Task.FromResult<IEnumerable<TResult>>([default(TResult)!]);
+
         public Task<T?> FirstOrDefaultAsync(Expression<Func<T, bool>> predicate) => Task.FromResult<T?>(new T());
 
         public Task<int> InsertAsync(T entity) => Task.FromResult(1);
