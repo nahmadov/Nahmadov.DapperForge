@@ -77,12 +77,10 @@ public class MultiLevelResultMapper<T> where T : class
 
     private object GetEntityKey(Dictionary<string, object> entityData, Type entityType)
     {
-        var idProperty = entityType.GetProperty("Id");
-        if (idProperty != null)
+        var primaryKeyColumnName = PrimaryKeyHelper.GetPrimaryKeyColumnName(entityType);
+        if (primaryKeyColumnName != null)
         {
-            var columnAttr = idProperty.GetCustomAttribute<ColumnNameAttribute>();
-            var columnName = columnAttr?.Name ?? "Id";
-            return entityData.ContainsKey(columnName) ? entityData[columnName] : 0;
+            return entityData.ContainsKey(primaryKeyColumnName) ? entityData[primaryKeyColumnName] : 0;
         }
         return 0;
     }

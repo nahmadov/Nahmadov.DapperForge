@@ -176,12 +176,9 @@ public class NavigationPropertyAnalyzer
 
     private static string GetPrimaryKeyColumn(Type type)
     {
-        var idProperty = type.GetProperty("Id");
-        if (idProperty != null)
-        {
-            var columnAttr = idProperty.GetCustomAttribute<ColumnNameAttribute>();
-            return columnAttr?.Name ?? "Id";
-        }
+        var primaryKeyColumnName = PrimaryKeyHelper.GetPrimaryKeyColumnName(type);
+        if (primaryKeyColumnName != null)
+            return primaryKeyColumnName;
 
         var firstIntProperty = type.GetProperties()
             .FirstOrDefault(p => p.PropertyType == typeof(int) || p.PropertyType == typeof(int?));

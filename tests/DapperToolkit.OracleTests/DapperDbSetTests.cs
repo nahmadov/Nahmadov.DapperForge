@@ -43,7 +43,7 @@ public class DapperDbSetTests
         var entity = new EntityWithoutId { Name = "Test" };
 
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => dbSet.DeleteAsync(entity));
-        Assert.Equal("Entity must have an Id property for deletion.", exception.Message);
+        Assert.Equal("Entity EntityWithoutId must have a primary key property (either marked with [PrimaryKey] attribute or named 'Id') for deletion.", exception.Message);
     }
 
     [Fact]
@@ -55,7 +55,7 @@ public class DapperDbSetTests
         var entity = new EntityWithNullableId { Id = null, Name = "Test" };
 
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => dbSet.DeleteAsync(entity));
-        Assert.Equal("Entity Id cannot be null for deletion.", exception.Message);
+        Assert.Equal("Entity primary key cannot be null for deletion.", exception.Message);
     }
 
     [Fact]
@@ -265,7 +265,7 @@ public class DapperDbSetTests
         var dbSet = new DapperDbSet<EntityWithoutId>(context);
 
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => dbSet.ExistsAsync(1));
-        Assert.Equal("Entity must have an Id property for existence check.", exception.Message);
+        Assert.Equal("Entity EntityWithoutId must have a primary key property (either marked with [PrimaryKey] attribute or named 'Id') for existence check.", exception.Message);
     }
 
     private class EntityWithoutId

@@ -67,9 +67,7 @@ public abstract class BaseDapperDbSet<T> : IDapperDbSet<T>, IIncludableDbSet<T> 
 
     public async Task<int> InsertAsync(T entity)
     {
-        var properties = typeof(T).GetProperties()
-            .Where(p => p.Name != "Id")
-            .ToList();
+        var properties = PrimaryKeyHelper.GetNonPrimaryKeyProperties(typeof(T)).ToList();
 
         var columns = string.Join(", ", properties.Select(p =>
         {
@@ -85,9 +83,7 @@ public abstract class BaseDapperDbSet<T> : IDapperDbSet<T>, IIncludableDbSet<T> 
 
     public async Task<int> UpdateAsync(T entity)
     {
-        var properties = typeof(T).GetProperties()
-            .Where(p => p.Name != "Id")
-            .ToList();
+        var properties = PrimaryKeyHelper.GetNonPrimaryKeyProperties(typeof(T)).ToList();
 
         var setClause = string.Join(", ", properties.Select(p =>
         {
@@ -96,28 +92,23 @@ public abstract class BaseDapperDbSet<T> : IDapperDbSet<T>, IIncludableDbSet<T> 
             return $"{columnName} = {FormatParameter(p.Name)}";
         }));
 
-        var idProperty = typeof(T).GetProperty("Id");
-        if (idProperty == null)
-            throw new InvalidOperationException("Entity must have an Id property for update.");
+        PrimaryKeyHelper.ValidatePrimaryKey(typeof(T), "update");
+        var idColumnName = PrimaryKeyHelper.GetPrimaryKeyColumnName(typeof(T))!;
 
-        var idAttr = idProperty.GetCustomAttribute<ColumnNameAttribute>();
-        var idColumnName = idAttr?.Name ?? "Id";
-
-        var sql = $"UPDATE {FormatTableName(_tableName)} SET {setClause} WHERE {idColumnName} = {FormatParameter("Id")}";
+        var primaryKeyPropertyName = PrimaryKeyHelper.GetPrimaryKeyPropertyName(typeof(T))!;
+        var sql = $"UPDATE {FormatTableName(_tableName)} SET {setClause} WHERE {idColumnName} = {FormatParameter(primaryKeyPropertyName)}";
         return await _context.ExecuteAsync(sql, entity);
     }
 
     public async Task<int> DeleteAsync(int id)
     {
-        var idProperty = typeof(T).GetProperty("Id");
-        if (idProperty == null)
-            throw new InvalidOperationException("Entity must have an Id property for deletion.");
+        PrimaryKeyHelper.ValidatePrimaryKey(typeof(T), "deletion");
+        var idColumnName = PrimaryKeyHelper.GetPrimaryKeyColumnName(typeof(T))!;
+        var primaryKeyPropertyName = PrimaryKeyHelper.GetPrimaryKeyPropertyName(typeof(T))!;
 
-        var idAttr = idProperty.GetCustomAttribute<ColumnNameAttribute>();
-        var idColumnName = idAttr?.Name ?? "Id";
-
-        var sql = $"DELETE FROM {FormatTableName(_tableName)} WHERE {idColumnName} = {FormatParameter("Id")}";
-        return await _context.ExecuteAsync(sql, new { Id = id });
+        var sql = $"DELETE FROM {FormatTableName(_tableName)} WHERE {idColumnName} = {FormatParameter(primaryKeyPropertyName)}";
+        var parameters = new Dictionary<string, object> { [primaryKeyPropertyName] = id };
+        return await _context.ExecuteAsync(sql, parameters);
     }
 
     public async Task<int> DeleteAsync(Expression<Func<T, bool>> predicate)
@@ -131,19 +122,16 @@ public abstract class BaseDapperDbSet<T> : IDapperDbSet<T>, IIncludableDbSet<T> 
 
     public async Task<int> DeleteAsync(T entity)
     {
-        var idProperty = typeof(T).GetProperty("Id");
-        if (idProperty == null)
-            throw new InvalidOperationException("Entity must have an Id property for deletion.");
+        PrimaryKeyHelper.ValidatePrimaryKey(typeof(T), "deletion");
+        PrimaryKeyHelper.ValidatePrimaryKeyValue(entity, "deletion");
+        
+        var idColumnName = PrimaryKeyHelper.GetPrimaryKeyColumnName(typeof(T))!;
+        var primaryKeyPropertyName = PrimaryKeyHelper.GetPrimaryKeyPropertyName(typeof(T))!;
+        var idValue = PrimaryKeyHelper.GetPrimaryKeyValue(entity);
 
-        var idValue = idProperty.GetValue(entity);
-        if (idValue == null)
-            throw new InvalidOperationException("Entity Id cannot be null for deletion.");
-
-        var idAttr = idProperty.GetCustomAttribute<ColumnNameAttribute>();
-        var idColumnName = idAttr?.Name ?? "Id";
-
-        var sql = $"DELETE FROM {FormatTableName(_tableName)} WHERE {idColumnName} = {FormatParameter("Id")}";
-        return await _context.ExecuteAsync(sql, new { Id = idValue });
+        var sql = $"DELETE FROM {FormatTableName(_tableName)} WHERE {idColumnName} = {FormatParameter(primaryKeyPropertyName)}";
+        var parameters = new Dictionary<string, object> { [primaryKeyPropertyName] = idValue! };
+        return await _context.ExecuteAsync(sql, parameters);
     }
 
     public async Task<bool> AnyAsync()
@@ -165,15 +153,13 @@ public abstract class BaseDapperDbSet<T> : IDapperDbSet<T>, IIncludableDbSet<T> 
 
     public async Task<bool> ExistsAsync(int id)
     {
-        var idProperty = typeof(T).GetProperty("Id");
-        if (idProperty == null)
-            throw new InvalidOperationException("Entity must have an Id property for existence check.");
+        PrimaryKeyHelper.ValidatePrimaryKey(typeof(T), "existence check");
+        var columnName = PrimaryKeyHelper.GetPrimaryKeyColumnName(typeof(T))!;
+        var primaryKeyPropertyName = PrimaryKeyHelper.GetPrimaryKeyPropertyName(typeof(T))!;
 
-        var attr = idProperty.GetCustomAttribute<ColumnNameAttribute>();
-        var columnName = attr?.Name ?? "Id";
-
-        var sql = GenerateExistsQuery($"SELECT 1 FROM {FormatTableName(_tableName)} WHERE {columnName} = {FormatParameter("Id")}");
-        var result = await _context.QueryFirstOrDefaultAsync<int>(sql, new { Id = id });
+        var sql = GenerateExistsQuery($"SELECT 1 FROM {FormatTableName(_tableName)} WHERE {columnName} = {FormatParameter(primaryKeyPropertyName)}");
+        var parameters = new Dictionary<string, object> { [primaryKeyPropertyName] = id };
+        var result = await _context.QueryFirstOrDefaultAsync<int>(sql, parameters);
         return result == 1;
     }
 
@@ -197,12 +183,8 @@ public abstract class BaseDapperDbSet<T> : IDapperDbSet<T>, IIncludableDbSet<T> 
         if (pageNumber < 1) throw new ArgumentException("Page number must be greater than 0", nameof(pageNumber));
         if (pageSize < 1) throw new ArgumentException("Page size must be greater than 0", nameof(pageSize));
 
-        var idProperty = typeof(T).GetProperty("Id");
-        if (idProperty == null)
-            throw new InvalidOperationException("Entity must have an Id property for pagination.");
-
-        var idAttr = idProperty.GetCustomAttribute<ColumnNameAttribute>();
-        var idColumnName = idAttr?.Name ?? "Id";
+        PrimaryKeyHelper.ValidatePrimaryKey(typeof(T), "pagination");
+        var idColumnName = PrimaryKeyHelper.GetPrimaryKeyColumnName(typeof(T))!;
 
         var offset = (pageNumber - 1) * pageSize;
         var sql = $"SELECT {GetProjection()} FROM {FormatTableName(_tableName)} ORDER BY {idColumnName} OFFSET {offset} ROWS FETCH NEXT {pageSize} ROWS ONLY";
@@ -227,12 +209,8 @@ public abstract class BaseDapperDbSet<T> : IDapperDbSet<T>, IIncludableDbSet<T> 
         if (pageNumber < 1) throw new ArgumentException("Page number must be greater than 0", nameof(pageNumber));
         if (pageSize < 1) throw new ArgumentException("Page size must be greater than 0", nameof(pageSize));
 
-        var idProperty = typeof(T).GetProperty("Id");
-        if (idProperty == null)
-            throw new InvalidOperationException("Entity must have an Id property for pagination.");
-
-        var idAttr = idProperty.GetCustomAttribute<ColumnNameAttribute>();
-        var idColumnName = idAttr?.Name ?? "Id";
+        PrimaryKeyHelper.ValidatePrimaryKey(typeof(T), "pagination");
+        var idColumnName = PrimaryKeyHelper.GetPrimaryKeyColumnName(typeof(T))!;
 
         var offset = (pageNumber - 1) * pageSize;
         var sql = $@"
@@ -404,11 +382,10 @@ public abstract class BaseDapperDbSet<T> : IDapperDbSet<T>, IIncludableDbSet<T> 
 
     private object GetEntityKey(Dictionary<string, object> entityData)
     {
-        var idProperty = typeof(T).GetProperty("Id");
-        if (idProperty != null)
+        var primaryKeyProperty = PrimaryKeyHelper.GetPrimaryKeyProperty(typeof(T));
+        if (primaryKeyProperty != null)
         {
-            var columnAttr = idProperty.GetCustomAttribute<ColumnNameAttribute>();
-            var columnName = GetEntityKeyColumnName(columnAttr?.Name ?? "Id");
+            var columnName = GetEntityKeyColumnName(PrimaryKeyHelper.GetPrimaryKeyColumnName(typeof(T))!);
             return entityData.ContainsKey(columnName) ? entityData[columnName] : 0;
         }
         return 0;
@@ -453,11 +430,11 @@ public abstract class BaseDapperDbSet<T> : IDapperDbSet<T>, IIncludableDbSet<T> 
         if (entity1 == null || entity2 == null) return false;
         if (entity1.GetType() != entity2.GetType()) return false;
         
-        var idProperty = entity1.GetType().GetProperty("Id");
-        if (idProperty != null)
+        var primaryKeyProperty = PrimaryKeyHelper.GetPrimaryKeyProperty(entity1.GetType());
+        if (primaryKeyProperty != null)
         {
-            var id1 = idProperty.GetValue(entity1);
-            var id2 = idProperty.GetValue(entity2);
+            var id1 = primaryKeyProperty.GetValue(entity1);
+            var id2 = primaryKeyProperty.GetValue(entity2);
             return Equals(id1, id2);
         }
         
