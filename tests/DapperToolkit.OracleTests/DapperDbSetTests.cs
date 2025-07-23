@@ -21,10 +21,13 @@ public class DapperDbSetTests
     [Fact]
     public void GetProjection_Should_Build_Correct_Select_Clause()
     {
+        var mockContext = new Mock<IDapperDbContext>();
+        var dbSet = new DapperDbSet<SampleEntity>(new Oracle.Context.DapperDbContext(Mock.Of<IDapperConnectionProvider>()));
+        
         var method = typeof(DapperDbSet<SampleEntity>)
-            .GetMethod("GetProjection", BindingFlags.NonPublic | BindingFlags.Static)!;
+            .GetMethod("GetProjection", BindingFlags.NonPublic | BindingFlags.Instance)!;
 
-        var result = method.Invoke(null, null) as string;
+        var result = method.Invoke(dbSet, null) as string;
 
         Assert.NotNull(result);
         Assert.Contains("col_id AS Id", result);

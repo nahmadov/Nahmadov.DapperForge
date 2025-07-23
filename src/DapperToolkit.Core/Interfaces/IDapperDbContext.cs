@@ -4,6 +4,7 @@ namespace DapperToolkit.Core.Interfaces;
 
 public interface IDapperDbContext
 {
+    IDbConnection Connection { get; }
     Task<IEnumerable<T>> QueryAsync<T>(string sql, object? param = null);
     Task<T?> QueryFirstOrDefaultAsync<T>(string sql, object? param = null);
     Task<int> ExecuteAsync(string sql, object? param = null);

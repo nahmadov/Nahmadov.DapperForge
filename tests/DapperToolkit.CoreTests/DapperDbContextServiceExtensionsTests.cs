@@ -48,6 +48,7 @@ public class DapperDbContextServiceExtensionsTests
 
     private class FakeContext : IDapperDbContext
     {
+        public IDbConnection Connection => throw new NotImplementedException();
         public Task<int> ExecuteAsync(string sql, object param = null) => Task.FromResult(0);
         public Task<IEnumerable<T>> QueryAsync<T>(string sql, object param = null) => Task.FromResult(Enumerable.Empty<T>());
         public Task<T> QueryFirstOrDefaultAsync<T>(string sql, object param = null) => Task.FromResult<T>(default);

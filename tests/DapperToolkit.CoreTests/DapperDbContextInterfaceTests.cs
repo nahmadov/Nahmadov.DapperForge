@@ -8,6 +8,8 @@ public class DapperDbContextInterfaceTests
 {
     private class FakeDbContext : IDapperDbContext
     {
+        public IDbConnection Connection => throw new NotImplementedException();
+
         public Task<IEnumerable<T>> QueryAsync<T>(string sql, object? param = null)
             => Task.FromResult<IEnumerable<T>>([]);
 
