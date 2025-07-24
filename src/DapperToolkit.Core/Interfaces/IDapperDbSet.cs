@@ -1,3 +1,4 @@
+using System.Data;
 using System.Linq.Expressions;
 
 namespace DapperToolkit.Core.Interfaces;
@@ -9,11 +10,11 @@ public interface IDapperDbSet<T> where T : class
     Task<IEnumerable<T>> WhereAsync(Expression<Func<T, bool>> predicate);
     Task<IEnumerable<TResult>> SelectAsync<TResult>(Expression<Func<T, TResult>> selector);
     Task<T?> FirstOrDefaultAsync(Expression<Func<T, bool>> predicate);
-    Task<int> InsertAsync(T entity);
-    Task<int> UpdateAsync(T entity);
-    Task<int> DeleteAsync(int id);
-    Task<int> DeleteAsync(Expression<Func<T, bool>> predicate);
-    Task<int> DeleteAsync(T entity);
+    Task<int> InsertAsync(T entity, IDbTransaction? transaction = null);
+    Task<int> UpdateAsync(T entity, IDbTransaction? transaction = null);
+    Task<int> DeleteAsync(int id, IDbTransaction? transaction = null);
+    Task<int> DeleteAsync(Expression<Func<T, bool>> predicate, IDbTransaction? transaction = null);
+    Task<int> DeleteAsync(T entity, IDbTransaction? transaction = null);
     Task<bool> AnyAsync();
     Task<bool> AnyAsync(Expression<Func<T, bool>> predicate);
     Task<bool> ExistsAsync(int id);

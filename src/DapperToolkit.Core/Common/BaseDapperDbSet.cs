@@ -1,3 +1,4 @@
+using System.Data;
 using System.Linq.Expressions;
 using System.Reflection;
 
@@ -65,7 +66,7 @@ public abstract class BaseDapperDbSet<T> : IDapperDbSet<T>, IIncludableDbSet<T> 
         return await _context.QueryFirstOrDefaultAsync<T>(sql, parameters);
     }
 
-    public async Task<int> InsertAsync(T entity)
+    public async Task<int> InsertAsync(T entity, IDbTransaction? transaction = null)
     {
         var properties = PrimaryKeyHelper.GetNonPrimaryKeyProperties(typeof(T)).ToList();
 
@@ -78,10 +79,10 @@ public abstract class BaseDapperDbSet<T> : IDapperDbSet<T>, IIncludableDbSet<T> 
         var values = string.Join(", ", properties.Select(p => FormatParameter(p.Name)));
 
         var sql = $"INSERT INTO {FormatTableName(_tableName)} ({columns}) VALUES ({values})";
-        return await _context.ExecuteAsync(sql, entity);
+        return await _context.ExecuteAsync(sql, entity, transaction);
     }
 
-    public async Task<int> UpdateAsync(T entity)
+    public async Task<int> UpdateAsync(T entity, IDbTransaction? transaction = null)
     {
         var properties = PrimaryKeyHelper.GetNonPrimaryKeyProperties(typeof(T)).ToList();
 
@@ -97,10 +98,10 @@ public abstract class BaseDapperDbSet<T> : IDapperDbSet<T>, IIncludableDbSet<T> 
 
         var primaryKeyPropertyName = PrimaryKeyHelper.GetPrimaryKeyPropertyName(typeof(T))!;
         var sql = $"UPDATE {FormatTableName(_tableName)} SET {setClause} WHERE {idColumnName} = {FormatParameter(primaryKeyPropertyName)}";
-        return await _context.ExecuteAsync(sql, entity);
+        return await _context.ExecuteAsync(sql, entity, transaction);
     }
 
-    public async Task<int> DeleteAsync(int id)
+    public async Task<int> DeleteAsync(int id, IDbTransaction? transaction = null)
     {
         PrimaryKeyHelper.ValidatePrimaryKey(typeof(T), "deletion");
         var idColumnName = PrimaryKeyHelper.GetPrimaryKeyColumnName(typeof(T))!;
@@ -108,19 +109,19 @@ public abstract class BaseDapperDbSet<T> : IDapperDbSet<T>, IIncludableDbSet<T> 
 
         var sql = $"DELETE FROM {FormatTableName(_tableName)} WHERE {idColumnName} = {FormatParameter(primaryKeyPropertyName)}";
         var parameters = new Dictionary<string, object> { [primaryKeyPropertyName] = id };
-        return await _context.ExecuteAsync(sql, parameters);
+        return await _context.ExecuteAsync(sql, parameters, transaction);
     }
 
-    public async Task<int> DeleteAsync(Expression<Func<T, bool>> predicate)
+    public async Task<int> DeleteAsync(Expression<Func<T, bool>> predicate, IDbTransaction? transaction = null)
     {
         var visitor = CreatePredicateVisitor();
         var (whereClause, parameters) = visitor.Translate(predicate.Body);
 
         var sql = $"DELETE FROM {FormatTableName(_tableName)} WHERE {whereClause}";
-        return await _context.ExecuteAsync(sql, parameters);
+        return await _context.ExecuteAsync(sql, parameters, transaction);
     }
 
-    public async Task<int> DeleteAsync(T entity)
+    public async Task<int> DeleteAsync(T entity, IDbTransaction? transaction = null)
     {
         PrimaryKeyHelper.ValidatePrimaryKey(typeof(T), "deletion");
         PrimaryKeyHelper.ValidatePrimaryKeyValue(entity, "deletion");
@@ -131,7 +132,38 @@ public abstract class BaseDapperDbSet<T> : IDapperDbSet<T>, IIncludableDbSet<T> 
 
         var sql = $"DELETE FROM {FormatTableName(_tableName)} WHERE {idColumnName} = {FormatParameter(primaryKeyPropertyName)}";
         var parameters = new Dictionary<string, object> { [primaryKeyPropertyName] = idValue! };
-        return await _context.ExecuteAsync(sql, parameters);
+        return await _context.ExecuteAsync(sql, parameters, transaction);
+    }
+
+    public async Task ExecuteInTransactionAsync(Func<IDbTransaction, Task> operation)
+    {
+        using var transaction = await _context.BeginTransactionAsync();
+        try
+        {
+            await operation(transaction);
+            transaction.Commit();
+        }
+        catch
+        {
+            transaction.Rollback();
+            throw;
+        }
+    }
+
+    public async Task<TResult> ExecuteInTransactionAsync<TResult>(Func<IDbTransaction, Task<TResult>> operation)
+    {
+        using var transaction = await _context.BeginTransactionAsync();
+        try
+        {
+            var result = await operation(transaction);
+            transaction.Commit();
+            return result;
+        }
+        catch
+        {
+            transaction.Rollback();
+            throw;
+        }
     }
 
     public async Task<bool> AnyAsync()

@@ -10,13 +10,13 @@ public class DapperDbContextInterfaceTests
     {
         public IDbConnection Connection => throw new NotImplementedException();
 
-        public Task<IEnumerable<T>> QueryAsync<T>(string sql, object? param = null)
+        public Task<IEnumerable<T>> QueryAsync<T>(string sql, object? param = null, IDbTransaction? transaction = null)
             => Task.FromResult<IEnumerable<T>>([]);
 
-        public Task<T?> QueryFirstOrDefaultAsync<T>(string sql, object? param = null)
+        public Task<T?> QueryFirstOrDefaultAsync<T>(string sql, object? param = null, IDbTransaction? transaction = null)
             => Task.FromResult<T?>(default);
 
-        public Task<int> ExecuteAsync(string sql, object? param = null)
+        public Task<int> ExecuteAsync(string sql, object? param = null, IDbTransaction? transaction = null)
             => Task.FromResult(1);
 
         public Task<IDbTransaction> BeginTransactionAsync()

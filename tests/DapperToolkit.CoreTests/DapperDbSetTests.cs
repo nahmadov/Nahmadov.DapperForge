@@ -1,3 +1,4 @@
+using System.Data;
 using System.Linq.Expressions;
 
 using DapperToolkit.Core.Interfaces;
@@ -18,15 +19,15 @@ public class DapperDbSetTests
 
         public Task<T?> FirstOrDefaultAsync(Expression<Func<T, bool>> predicate) => Task.FromResult<T?>(new T());
 
-        public Task<int> InsertAsync(T entity) => Task.FromResult(1);
+        public Task<int> InsertAsync(T entity, IDbTransaction? transaction = null) => Task.FromResult(1);
 
-        public Task<int> UpdateAsync(T entity) => Task.FromResult(1);
+        public Task<int> UpdateAsync(T entity, IDbTransaction? transaction = null) => Task.FromResult(1);
 
-        public Task<int> DeleteAsync(int id) => Task.FromResult(1);
+        public Task<int> DeleteAsync(int id, IDbTransaction? transaction = null) => Task.FromResult(1);
 
-        public Task<int> DeleteAsync(Expression<Func<T, bool>> predicate) => Task.FromResult(1);
+        public Task<int> DeleteAsync(Expression<Func<T, bool>> predicate, IDbTransaction? transaction = null) => Task.FromResult(1);
 
-        public Task<int> DeleteAsync(T entity) => Task.FromResult(1);
+        public Task<int> DeleteAsync(T entity, IDbTransaction? transaction = null) => Task.FromResult(1);
 
         public Task<bool> AnyAsync() => Task.FromResult(true);
 
