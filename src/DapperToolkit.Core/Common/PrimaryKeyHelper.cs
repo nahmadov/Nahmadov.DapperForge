@@ -65,22 +65,21 @@ public static class PrimaryKeyHelper
         var primaryKeyProperty = GetPrimaryKeyProperty(entityType);
         if (primaryKeyProperty == null)
         {
-            throw new InvalidOperationException(
-                $"Entity {entityType.Name} must have a primary key property (either marked with [PrimaryKey] attribute or named 'Id') for {operationName}.");
+            throw ValidationHelper.CreateEntityOperationException(entityType, operationName, 
+                "Entity must have a primary key property (either marked with [PrimaryKey] attribute or named 'Id')");
         }
     }
 
 
     public static void ValidatePrimaryKeyValue(object entity, string operationName)
     {
-        if (entity == null)
-            throw new ArgumentNullException(nameof(entity));
+        ValidationHelper.ValidateNotNull(entity, nameof(entity));
 
         var primaryKeyValue = GetPrimaryKeyValue(entity);
         if (primaryKeyValue == null)
         {
-            throw new InvalidOperationException(
-                $"Entity primary key cannot be null for {operationName}.");
+            throw ValidationHelper.CreateEntityOperationException(entity.GetType(), operationName,
+                "Primary key value cannot be null");
         }
     }
 }

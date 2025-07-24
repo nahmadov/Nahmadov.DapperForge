@@ -32,6 +32,8 @@ public abstract class BaseDapperDbSet<T> : IDapperDbSet<T>, IIncludableDbSet<T> 
 
     public async Task<IEnumerable<T>> ToListAsync(Expression<Func<T, object>> orderBy, bool ascending = true)
     {
+        ValidationHelper.ValidateExpression(orderBy, nameof(orderBy));
+        
         var orderByVisitor = CreateOrderByVisitor();
         var orderByClause = orderByVisitor.TranslateOrderBy(orderBy, ascending);
         
@@ -41,6 +43,8 @@ public abstract class BaseDapperDbSet<T> : IDapperDbSet<T>, IIncludableDbSet<T> 
 
     public async Task<IEnumerable<T>> WhereAsync(Expression<Func<T, bool>> predicate)
     {
+        ValidationHelper.ValidateExpression(predicate, nameof(predicate));
+        
         var visitor = CreatePredicateVisitor();
         var (whereClause, parameters) = visitor.Translate(predicate.Body);
 
@@ -50,6 +54,8 @@ public abstract class BaseDapperDbSet<T> : IDapperDbSet<T>, IIncludableDbSet<T> 
 
     public async Task<IEnumerable<TResult>> SelectAsync<TResult>(Expression<Func<T, TResult>> selector)
     {
+        ValidationHelper.ValidateExpression(selector, nameof(selector));
+        
         var projectionVisitor = CreateProjectionVisitor(typeof(T));
         var projection = projectionVisitor.TranslateProjection<T, TResult>(selector);
 
@@ -59,6 +65,8 @@ public abstract class BaseDapperDbSet<T> : IDapperDbSet<T>, IIncludableDbSet<T> 
 
     public async Task<T?> FirstOrDefaultAsync(Expression<Func<T, bool>> predicate)
     {
+        ValidationHelper.ValidateExpression(predicate, nameof(predicate));
+        
         var visitor = CreatePredicateVisitor();
         var (whereClause, parameters) = visitor.Translate(predicate.Body);
 
@@ -68,6 +76,7 @@ public abstract class BaseDapperDbSet<T> : IDapperDbSet<T>, IIncludableDbSet<T> 
 
     public async Task<int> InsertAsync(T entity, IDbTransaction? transaction = null)
     {
+        ValidationHelper.ValidateEntity(entity, "insert");
         var properties = PrimaryKeyHelper.GetNonPrimaryKeyProperties(typeof(T)).ToList();
 
         var columns = string.Join(", ", properties.Select(p =>
@@ -84,6 +93,8 @@ public abstract class BaseDapperDbSet<T> : IDapperDbSet<T>, IIncludableDbSet<T> 
 
     public async Task<int> UpdateAsync(T entity, IDbTransaction? transaction = null)
     {
+        ValidationHelper.ValidateEntity(entity, "update");
+        
         var properties = PrimaryKeyHelper.GetNonPrimaryKeyProperties(typeof(T)).ToList();
 
         var setClause = string.Join(", ", properties.Select(p =>
@@ -114,6 +125,8 @@ public abstract class BaseDapperDbSet<T> : IDapperDbSet<T>, IIncludableDbSet<T> 
 
     public async Task<int> DeleteAsync(Expression<Func<T, bool>> predicate, IDbTransaction? transaction = null)
     {
+        ValidationHelper.ValidateExpression(predicate, nameof(predicate));
+        
         var visitor = CreatePredicateVisitor();
         var (whereClause, parameters) = visitor.Translate(predicate.Body);
 
@@ -123,6 +136,7 @@ public abstract class BaseDapperDbSet<T> : IDapperDbSet<T>, IIncludableDbSet<T> 
 
     public async Task<int> DeleteAsync(T entity, IDbTransaction? transaction = null)
     {
+        ValidationHelper.ValidateEntity(entity, "deletion");
         PrimaryKeyHelper.ValidatePrimaryKey(typeof(T), "deletion");
         PrimaryKeyHelper.ValidatePrimaryKeyValue(entity, "deletion");
         
@@ -212,8 +226,7 @@ public abstract class BaseDapperDbSet<T> : IDapperDbSet<T>, IIncludableDbSet<T> 
 
     public async Task<IEnumerable<T>> PageAsync(int pageNumber, int pageSize)
     {
-        if (pageNumber < 1) throw new ArgumentException("Page number must be greater than 0", nameof(pageNumber));
-        if (pageSize < 1) throw new ArgumentException("Page size must be greater than 0", nameof(pageSize));
+        ValidationHelper.ValidatePagination(pageNumber, pageSize);
 
         PrimaryKeyHelper.ValidatePrimaryKey(typeof(T), "pagination");
         var idColumnName = PrimaryKeyHelper.GetPrimaryKeyColumnName(typeof(T))!;
@@ -225,8 +238,8 @@ public abstract class BaseDapperDbSet<T> : IDapperDbSet<T>, IIncludableDbSet<T> 
 
     public async Task<IEnumerable<T>> PageAsync(int pageNumber, int pageSize, Expression<Func<T, object>> orderBy, bool ascending = true)
     {
-        if (pageNumber < 1) throw new ArgumentException("Page number must be greater than 0", nameof(pageNumber));
-        if (pageSize < 1) throw new ArgumentException("Page size must be greater than 0", nameof(pageSize));
+        ValidationHelper.ValidatePagination(pageNumber, pageSize);
+        ValidationHelper.ValidateExpression(orderBy, nameof(orderBy));
 
         var orderByVisitor = CreateOrderByVisitor();
         var orderByClause = orderByVisitor.TranslateOrderBy(orderBy, ascending);
@@ -238,8 +251,7 @@ public abstract class BaseDapperDbSet<T> : IDapperDbSet<T>, IIncludableDbSet<T> 
 
     public async Task<(IEnumerable<T> Data, int TotalCount)> PageWithCountAsync(int pageNumber, int pageSize)
     {
-        if (pageNumber < 1) throw new ArgumentException("Page number must be greater than 0", nameof(pageNumber));
-        if (pageSize < 1) throw new ArgumentException("Page size must be greater than 0", nameof(pageSize));
+        ValidationHelper.ValidatePagination(pageNumber, pageSize);
 
         PrimaryKeyHelper.ValidatePrimaryKey(typeof(T), "pagination");
         var idColumnName = PrimaryKeyHelper.GetPrimaryKeyColumnName(typeof(T))!;
@@ -258,8 +270,8 @@ public abstract class BaseDapperDbSet<T> : IDapperDbSet<T>, IIncludableDbSet<T> 
 
     public async Task<(IEnumerable<T> Data, int TotalCount)> PageWithCountAsync(int pageNumber, int pageSize, Expression<Func<T, object>> orderBy, bool ascending = true)
     {
-        if (pageNumber < 1) throw new ArgumentException("Page number must be greater than 0", nameof(pageNumber));
-        if (pageSize < 1) throw new ArgumentException("Page size must be greater than 0", nameof(pageSize));
+        ValidationHelper.ValidatePagination(pageNumber, pageSize);
+        ValidationHelper.ValidateExpression(orderBy, nameof(orderBy));
 
         var orderByVisitor = CreateOrderByVisitor();
         var orderByClause = orderByVisitor.TranslateOrderBy(orderBy, ascending);
