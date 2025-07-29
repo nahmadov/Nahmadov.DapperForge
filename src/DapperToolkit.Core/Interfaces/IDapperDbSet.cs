@@ -28,4 +28,9 @@ public interface IDapperDbSet<T> where T : class
     Task<IEnumerable<T>> IncludeAsync<TProperty>(Expression<Func<T, bool>> predicate, Expression<Func<T, TProperty>> includeExpression);
     IIncludableQueryable<T, TProperty> Include<TProperty>(Expression<Func<T, TProperty>> includeExpression);
     IIncludableQueryable<T, TProperty> Include<TProperty>(Expression<Func<T, bool>> predicate, Expression<Func<T, TProperty>> includeExpression);
+    
+    Task<int> BulkInsertAsync(IEnumerable<T> entities, IDbTransaction? transaction = null);
+    Task<int> BulkUpdateAsync(IEnumerable<T> entities, IDbTransaction? transaction = null);
+    Task<int> BulkDeleteAsync(IEnumerable<T> entities, IDbTransaction? transaction = null);
+    Task<int> BulkDeleteAsync(IEnumerable<int> ids, IDbTransaction? transaction = null);
 }

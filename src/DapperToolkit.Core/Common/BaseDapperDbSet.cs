@@ -517,9 +517,77 @@ public abstract class BaseDapperDbSet<T> : IDapperDbSet<T>, IIncludableDbSet<T> 
     protected abstract string GetEntityKeyColumnName(string columnName);
     protected abstract string GetMappingColumnName(string columnName);
     
+    public async Task<int> BulkInsertAsync(IEnumerable<T> entities, IDbTransaction? transaction = null)
+    {
+        ValidationHelper.ValidateNotNull(entities, nameof(entities));
+        var entitiesList = entities.ToList();
+        
+        if (!entitiesList.Any())
+            return 0;
+
+        foreach (var entity in entitiesList)
+        {
+            ValidationHelper.ValidateEntity(entity, "bulk insert");
+        }
+
+        return await ExecuteBulkInsertAsync(entitiesList, transaction);
+    }
+
+    public async Task<int> BulkUpdateAsync(IEnumerable<T> entities, IDbTransaction? transaction = null)
+    {
+        ValidationHelper.ValidateNotNull(entities, nameof(entities));
+        var entitiesList = entities.ToList();
+        
+        if (!entitiesList.Any())
+            return 0;
+
+        foreach (var entity in entitiesList)
+        {
+            ValidationHelper.ValidateEntity(entity, "bulk update");
+            PrimaryKeyHelper.ValidatePrimaryKeyValue(entity, "bulk update");
+        }
+
+        return await ExecuteBulkUpdateAsync(entitiesList, transaction);
+    }
+
+    public async Task<int> BulkDeleteAsync(IEnumerable<T> entities, IDbTransaction? transaction = null)
+    {
+        ValidationHelper.ValidateNotNull(entities, nameof(entities));
+        var entitiesList = entities.ToList();
+        
+        if (!entitiesList.Any())
+            return 0;
+
+        foreach (var entity in entitiesList)
+        {
+            ValidationHelper.ValidateEntity(entity, "bulk delete");
+            PrimaryKeyHelper.ValidatePrimaryKeyValue(entity, "bulk delete");
+        }
+
+        return await ExecuteBulkDeleteAsync(entitiesList, transaction);
+    }
+
+    public async Task<int> BulkDeleteAsync(IEnumerable<int> ids, IDbTransaction? transaction = null)
+    {
+        ValidationHelper.ValidateNotNull(ids, nameof(ids));
+        var idsList = ids.ToList();
+        
+        if (!idsList.Any())
+            return 0;
+
+        PrimaryKeyHelper.ValidatePrimaryKey(typeof(T), "bulk delete");
+        
+        return await ExecuteBulkDeleteByIdsAsync(idsList, transaction);
+    }
+
     protected abstract BasePredicateVisitor CreatePredicateVisitor();
     protected abstract BaseOrderByVisitor CreateOrderByVisitor();
     protected abstract BaseProjectionVisitor CreateProjectionVisitor(Type entityType);
     protected abstract BaseIncludeVisitor CreateIncludeVisitor(Type entityType, NavigationPropertyInfo navigationInfo);
     protected abstract MultiLevelIncludeVisitor CreateMultiLevelIncludeVisitor(Type rootType);
+    
+    protected abstract Task<int> ExecuteBulkInsertAsync(List<T> entities, IDbTransaction? transaction);
+    protected abstract Task<int> ExecuteBulkUpdateAsync(List<T> entities, IDbTransaction? transaction);
+    protected abstract Task<int> ExecuteBulkDeleteAsync(List<T> entities, IDbTransaction? transaction);
+    protected abstract Task<int> ExecuteBulkDeleteByIdsAsync(List<int> ids, IDbTransaction? transaction);
 }
