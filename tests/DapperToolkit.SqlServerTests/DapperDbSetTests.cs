@@ -417,4 +417,48 @@ public class DapperDbSetTests
         public int? Id { get; set; }
         public string Name { get; set; } = string.Empty;
     }
+
+    [Fact]
+    public void BulkInsertAsync_Method_Should_Exist()
+    {
+        var mockProvider = new Mock<IDapperConnectionProvider>();
+        var context = new DapperDbContext(mockProvider.Object);
+        var dbSet = new DapperDbSet<SampleEntity>(context);
+        
+        Assert.NotNull(dbSet);
+        Assert.True(typeof(DapperDbSet<SampleEntity>).GetMethod("BulkInsertAsync", new[] { typeof(List<SampleEntity>) }) != null);
+    }
+
+    [Fact]
+    public void BulkUpdateAsync_Method_Should_Exist()
+    {
+        var mockProvider = new Mock<IDapperConnectionProvider>();
+        var context = new DapperDbContext(mockProvider.Object);
+        var dbSet = new DapperDbSet<SampleEntity>(context);
+        
+        Assert.NotNull(dbSet);
+        Assert.True(typeof(DapperDbSet<SampleEntity>).GetMethod("BulkUpdateAsync", new[] { typeof(List<SampleEntity>) }) != null);
+    }
+
+    [Fact]
+    public void BulkDeleteAsync_WithEntities_Method_Should_Exist()
+    {
+        var mockProvider = new Mock<IDapperConnectionProvider>();
+        var context = new DapperDbContext(mockProvider.Object);
+        var dbSet = new DapperDbSet<SampleEntity>(context);
+        
+        Assert.NotNull(dbSet);
+        Assert.True(typeof(DapperDbSet<SampleEntity>).GetMethod("BulkDeleteAsync", new[] { typeof(List<SampleEntity>) }) != null);
+    }
+
+    [Fact]
+    public void BulkDeleteAsync_WithIds_Method_Should_Exist()
+    {
+        var mockProvider = new Mock<IDapperConnectionProvider>();
+        var context = new DapperDbContext(mockProvider.Object);
+        var dbSet = new DapperDbSet<SampleEntity>(context);
+        
+        Assert.NotNull(dbSet);
+        Assert.True(typeof(DapperDbSet<SampleEntity>).GetMethod("BulkDeleteAsync", new[] { typeof(List<int>) }) != null);
+    }
 }

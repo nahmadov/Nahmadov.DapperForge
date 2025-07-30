@@ -54,6 +54,14 @@ public class DapperDbSetTests
         public IIncludableQueryable<T, TProperty> Include<TProperty>(Expression<Func<T, TProperty>> includeExpression) => throw new NotImplementedException();
 
         public IIncludableQueryable<T, TProperty> Include<TProperty>(Expression<Func<T, bool>> predicate, Expression<Func<T, TProperty>> includeExpression) => throw new NotImplementedException();
+
+        public Task<int> BulkInsertAsync(IEnumerable<T> entities, IDbTransaction? transaction = null) => Task.FromResult(entities?.Count() ?? 0);
+
+        public Task<int> BulkUpdateAsync(IEnumerable<T> entities, IDbTransaction? transaction = null) => Task.FromResult(entities?.Count() ?? 0);
+
+        public Task<int> BulkDeleteAsync(IEnumerable<T> entities, IDbTransaction? transaction = null) => Task.FromResult(entities?.Count() ?? 0);
+
+        public Task<int> BulkDeleteAsync(IEnumerable<int> ids, IDbTransaction? transaction = null) => Task.FromResult(ids?.Count() ?? 0);
     }
 
     private class SampleEntity
