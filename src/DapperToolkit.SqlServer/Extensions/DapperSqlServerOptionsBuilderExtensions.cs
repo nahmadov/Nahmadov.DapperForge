@@ -1,3 +1,5 @@
+using Microsoft.Data.SqlClient;
+
 using DapperToolkit.Core.Common;
 using DapperToolkit.Core.Context;
 
@@ -8,9 +10,10 @@ public static class DapperSqlServerOptionsBuilderExtensions
     public static DapperDbContextOptionsBuilder<TContext> UseSqlServer<TContext>(
         this DapperDbContextOptionsBuilder<TContext> builder,
         string connectionString)
-        where TContext : DapperDbContextBase<TContext>
+        where TContext : DapperDbContext
     {
-        return builder.UseProvider(_ =>
-            new SqlServerConnectionProvider<TContext>(connectionString));
+        builder.Options.ConnectionFactory = () => new SqlConnection(connectionString);
+        return builder;
+
     }
 }

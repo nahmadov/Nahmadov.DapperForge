@@ -12,7 +12,7 @@ public static class DapperDbContextServiceExtensions
         this IServiceCollection services,
         Action<DapperDbContextOptionsBuilder<TContext>> configure,
         ServiceLifetime lifetime = ServiceLifetime.Scoped)
-        where TContext : DapperDbContextBase<TContext>
+        where TContext : DapperDbContext
     {
         // options obyektini yaradıb builder-ə veririk
         var options = new DapperDbContextOptions<TContext>();
@@ -20,33 +20,21 @@ public static class DapperDbContextServiceExtensions
 
         configure(builder);
 
-        if (options.ProviderFactory is null)
-        {
+        if (options.ConnectionFactory is null)
             throw new InvalidOperationException(
-                $"No Dapper provider has been configured for {typeof(TContext).Name}. " +
-                "Call UseSqlServer / UseOracle / UsePostgres, etc.");
-        }
+                $"No connection configured for {typeof(TContext).Name}. Call UseSqlServer/UseOracle/etc.");
 
         // options – generic olduğu üçün bu context-ə özünəməxsusdur
         services.AddSingleton(options);
 
+        services.Add(
+            new ServiceDescriptor(typeof(TContext), typeof(TContext), lifetime));
+
         // provider TContext-ə bağlıdır
-        services.Add(new ServiceDescriptor(
-            typeof(IDapperConnectionProvider<TContext>),
-            sp => options.ProviderFactory(sp),
-            lifetime));
-
-        // context
-        services.Add(new ServiceDescriptor(
-            typeof(TContext),
-            typeof(TContext),
-            lifetime));
-
-        // ümumi IDapperDbContext kimi də inject oluna bilsin
-        services.Add(new ServiceDescriptor(
-            typeof(IDapperDbContext),
-            sp => sp.GetRequiredService<TContext>(),
-            lifetime));
+        services.Add(
+            new ServiceDescriptor(typeof(IDapperDbContext),
+                                  sp => sp.GetRequiredService<TContext>(),
+                                  lifetime));
 
         return services;
     }

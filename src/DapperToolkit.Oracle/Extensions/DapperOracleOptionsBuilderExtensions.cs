@@ -1,6 +1,8 @@
 using DapperToolkit.Core.Common;
 using DapperToolkit.Core.Context;
 
+using Oracle.ManagedDataAccess.Client;
+
 namespace DapperToolkit.Oracle.Extensions;
 
 public static class DapperOracleOptionsBuilderExtensions
@@ -8,9 +10,9 @@ public static class DapperOracleOptionsBuilderExtensions
     public static DapperDbContextOptionsBuilder<TContext> UseOracle<TContext>(
         this DapperDbContextOptionsBuilder<TContext> builder,
         string connectionString)
-        where TContext : DapperDbContextBase<TContext>
+        where TContext : DapperDbContext
     {
-        return builder.UseProvider(_ =>
-            new OracleConnectionProvider<TContext>(connectionString));
+        builder.Options.ConnectionFactory = () => new OracleConnection(connectionString);
+        return builder;
     }
 }

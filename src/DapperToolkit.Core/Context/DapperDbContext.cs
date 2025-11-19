@@ -2,16 +2,23 @@ using System.Data;
 
 using Dapper;
 
+using DapperToolkit.Core.Common;
 using DapperToolkit.Core.Interfaces;
 
 namespace DapperToolkit.Core.Context;
 
-public abstract class DapperDbContextBase<TContext>(IDapperConnectionProvider<TContext> provider) : IDapperDbContext, IDisposable
-    where TContext : DapperDbContextBase<TContext>
+public abstract class DapperDbContext : IDapperDbContext, IDisposable
 {
-    private readonly IDapperConnectionProvider<TContext> _provider = provider;
-    private bool _disposed;
+    private readonly DapperDbContextOptions _options;
     private IDbConnection? _connection;
+    private bool _disposed;
+
+    protected DapperDbContext(DapperDbContextOptions options)
+    {
+        _options = options ?? throw new ArgumentNullException(nameof(options));
+        if (_options.ConnectionFactory is null)
+            throw new InvalidOperationException("ConnectionFactory is not configured.");
+    }
 
     protected IDbConnection Connection
     {
@@ -28,8 +35,9 @@ public abstract class DapperDbContextBase<TContext>(IDapperConnectionProvider<TC
                     _connection = null;
                 }
             }
-
-            _connection ??= _provider.CreateConnection();
+            if (_options.ConnectionFactory is null)
+                throw new InvalidOperationException("ConnectionFactory is not configured.");
+            _connection ??= _options.ConnectionFactory();
             if (_connection.State != ConnectionState.Open)
                 _connection.Open();
 

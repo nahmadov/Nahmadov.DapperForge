@@ -1,8 +1,15 @@
-using DapperToolkit.Core.Interfaces;
+using System.Data;
+
+using DapperToolkit.Core.Context;
 
 namespace DapperToolkit.Core.Common;
 
-public sealed class DapperDbContextOptions<TContext> where TContext : IDapperDbContext
+public class DapperDbContextOptions
 {
-    internal Func<IServiceProvider, IDapperConnectionProvider<TContext>>? ProviderFactory { get; set; }
+    internal Func<IDbConnection>? ConnectionFactory { get; set; }
+}
+
+public sealed class DapperDbContextOptions<TContext> : DapperDbContextOptions
+    where TContext : DapperDbContext
+{
 }

@@ -1,18 +1,9 @@
-using DapperToolkit.Core.Interfaces;
+using DapperToolkit.Core.Context;
 
 namespace DapperToolkit.Core.Common;
 
-public sealed class DapperDbContextOptionsBuilder<TContext> where TContext : IDapperDbContext
+public sealed class DapperDbContextOptionsBuilder<TContext> where TContext : DapperDbContext
 {
     internal DapperDbContextOptions<TContext> Options { get; }
-
-    internal DapperDbContextOptionsBuilder(DapperDbContextOptions<TContext> options)
-        => Options = options;
-
-    internal DapperDbContextOptionsBuilder<TContext> UseProvider(
-        Func<IServiceProvider, IDapperConnectionProvider<TContext>> factory)
-    {
-        Options.ProviderFactory = factory;
-        return this;
-    }
+    internal DapperDbContextOptionsBuilder(DapperDbContextOptions<TContext> options) => Options = options;
 }
