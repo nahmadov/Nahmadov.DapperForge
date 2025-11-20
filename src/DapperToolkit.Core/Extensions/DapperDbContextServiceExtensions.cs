@@ -30,12 +30,6 @@ public static class DapperDbContextServiceExtensions
         services.Add(
             new ServiceDescriptor(typeof(TContext), typeof(TContext), lifetime));
 
-        // provider TContext-ə bağlıdır
-        services.Add(
-            new ServiceDescriptor(typeof(IDapperDbContext),
-                                  sp => sp.GetRequiredService<TContext>(),
-                                  lifetime));
-
         return services;
     }
 }
