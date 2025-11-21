@@ -3,6 +3,7 @@ using System.Data;
 
 using Dapper;
 
+using DapperToolkit.Core.Builders;
 using DapperToolkit.Core.Common;
 using DapperToolkit.Core.Interfaces;
 
@@ -18,6 +19,8 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
     protected DapperDbContext(DapperDbContextOptions options)
     {
         _options = options ?? throw new ArgumentNullException(nameof(options));
+        if (options.Dialect is null)
+            throw new InvalidOperationException("Dialect is not configured. Use a database provider extension (UseSqlServer, UseOracle, etc.).");
         if (_options.ConnectionFactory is null)
             throw new InvalidOperationException("ConnectionFactory is not configured.");
     }
@@ -74,9 +77,11 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
     public DapperSet<TEntity> Set<TEntity>()
             where TEntity : class
     {
-        return (DapperSet<TEntity>)_sets.GetOrAdd(
-            typeof(TEntity),
-            _ => new DapperSet<TEntity>(this));
+        return (DapperSet<TEntity>)_sets.GetOrAdd(typeof(TEntity), _ =>
+        {
+           var generator = new SqlGenerator<TEntity>(_options.Dialect); 
+           return new DapperSet<TEntity>(this, generator);
+        });
     }
 
     public void Dispose()

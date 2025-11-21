@@ -1,22 +1,32 @@
+using System.Reflection;
+
+using DapperToolkit.Core.Interfaces;
 using DapperToolkit.Core.Mapping;
 
 namespace DapperToolkit.Core.Builders;
 
 internal sealed class SqlGenerator<TEntity> where TEntity : class
 {
+    private readonly ISqlDialect _dialect;
     private readonly EntityMapping _mapping;
 
     public string TableName => _mapping.TableName;
     public string KeyPropertyName => _mapping.KeyProperty.Name;
 
+    public PropertyInfo KeyProperty => _mapping.KeyProperty;
+    public bool IsKeyIdentity => _mapping.PropertyMappings.First(pm => pm.Property == _mapping.KeyProperty).IsIdentity;
+    public string DialectName => _dialect.Name;
+
     public string SelectAllSql { get; }
     public string SelectByIdSql { get; }
     public string InsertSql { get; }
+    public string? InsertReturningIdSql { get; }
     public string UpdateSql { get; }
     public string DeleteByIdSql { get; }
 
-    public SqlGenerator()
+    public SqlGenerator(ISqlDialect? dialect)
     {
+        _dialect = dialect ?? throw new ArgumentNullException(nameof(dialect));
         _mapping = EntityMappingCache<TEntity>.Mapping;
 
         var fullTableName = BuildFullTableName();
@@ -25,16 +35,19 @@ internal sealed class SqlGenerator<TEntity> where TEntity : class
         SelectAllSql = BuildSelectAllSql(fullTableName);
         SelectByIdSql = BuildSelectByIdSql(SelectAllSql, keyColumn);
         InsertSql = BuildInsertSql(fullTableName);
+        InsertReturningIdSql = BuildInsertReturningIdSql(fullTableName, keyColumn);
         UpdateSql = BuildUpdateSql(fullTableName, keyColumn);
         DeleteByIdSql = BuildDeleteSql(fullTableName, keyColumn);
     }
 
     private string BuildFullTableName()
     {
-        if (string.IsNullOrWhiteSpace(_mapping.Schema))
-            return _mapping.TableName;
+        var table = _dialect.QuoteIdentifier(_mapping.TableName);
 
-        return $"{_mapping.Schema}.{_mapping.TableName}";
+        if (string.IsNullOrWhiteSpace(_mapping.Schema))
+            return table;
+
+        return $"{_dialect.QuoteIdentifier(_mapping.Schema!)}.{table}";
     }
 
     private string GetKeyColumnName()
@@ -46,13 +59,14 @@ internal sealed class SqlGenerator<TEntity> where TEntity : class
 
     private string BuildSelectAllSql(string fullTableName)
     {
-        var columnList = string.Join(", ", _mapping.PropertyMappings.Select(pm => $"{pm.ColumnName} AS {pm.Property.Name}"));
+        var columnList = string.Join(", ", _mapping.PropertyMappings.Select(pm => $"{_dialect.QuoteIdentifier(pm.ColumnName)} AS {_dialect.QuoteIdentifier(pm.Property.Name)}"));
         return $"SELECT {columnList} FROM {fullTableName}";
     }
 
     private string BuildSelectByIdSql(string selectAllSql, string keyColumn)
     {
-        return $"{selectAllSql} WHERE {keyColumn} = @{KeyPropertyName}";
+        var param = _dialect.FormatParameter(KeyPropertyName);
+        return $"{selectAllSql} WHERE {_dialect.QuoteIdentifier(keyColumn)} = {param}";
     }
 
     private string BuildInsertSql(string fullTableName)
@@ -69,10 +83,23 @@ internal sealed class SqlGenerator<TEntity> where TEntity : class
             );
         }
 
-        var columns = string.Join(", ", insertable.Select(pm => pm.ColumnName));
-        var parameters = string.Join(", ", insertable.Select(pm => "@" + pm.Property.Name));
+        var columns = string.Join(", ", insertable.Select(pm => _dialect.QuoteIdentifier(pm.ColumnName)));
+        var parameters = string.Join(", ", insertable.Select(pm => _dialect.FormatParameter(pm.Property.Name)));
 
         return $"INSERT INTO {fullTableName} ({columns}) VALUES ({parameters})";
+    }
+
+    private string? BuildInsertReturningIdSql(string fullTableName, string keyColumn)
+    {
+        try
+        {
+            return _dialect.BuildInsertReturningId(InsertSql, fullTableName, keyColumn);
+        }
+        catch (NotSupportedException)
+        {
+            // optional: or leave empty and let callers ignore it
+            return null;
+        }
     }
 
     private string BuildUpdateSql(string fullTableName, string keyColumn)
@@ -90,14 +117,15 @@ internal sealed class SqlGenerator<TEntity> where TEntity : class
         }
 
         var setClause = string.Join(", ",
-            updatable.Select(pm => $"{pm.ColumnName} = @{pm.Property.Name}")
+            updatable.Select(pm => $"{_dialect.QuoteIdentifier(pm.ColumnName)} = {_dialect.FormatParameter(pm.Property.Name)}")
         );
-
-        return $"UPDATE {fullTableName} SET {setClause} WHERE {keyColumn} = @{KeyPropertyName}";
+        var keyParam = _dialect.FormatParameter(KeyPropertyName);
+        return $"UPDATE {fullTableName} SET {setClause} WHERE {_dialect.QuoteIdentifier(keyColumn)} = {keyParam}";
     }
 
     private string BuildDeleteSql(string fullTableName, string keyColumn)
     {
-        return $"DELETE FROM {fullTableName} WHERE {keyColumn} = @{KeyPropertyName}";
+        var keyParam = _dialect.FormatParameter(KeyPropertyName);
+        return $"DELETE FROM {fullTableName} WHERE {_dialect.QuoteIdentifier(keyColumn)} = {keyParam}";
     }
 }

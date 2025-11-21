@@ -13,6 +13,7 @@ public static class DapperSqlServerOptionsBuilderExtensions
         where TContext : DapperDbContext
     {
         builder.Options.ConnectionFactory = () => new SqlConnection(connectionString);
+        builder.Options.Dialect = SqlServerDialect.Instance;
         return builder;
 
     }

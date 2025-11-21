@@ -13,6 +13,7 @@ public static class DapperOracleOptionsBuilderExtensions
         where TContext : DapperDbContext
     {
         builder.Options.ConnectionFactory = () => new OracleConnection(connectionString);
+        builder.Options.Dialect = OracleDialect.Instance;
         return builder;
     }
 }
