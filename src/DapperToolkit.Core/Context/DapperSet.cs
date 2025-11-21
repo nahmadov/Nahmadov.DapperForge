@@ -26,11 +26,11 @@ public sealed class DapperSet<TEntity> where TEntity : class
         return _context.QueryFirstOrDefaultAsync<TEntity>(_generator.SelectByIdSql, param);
     }
 
-    public Task<IEnumerable<TEntity>> QueryAsync(string whereClause, object? parameters = null)
-    {
-        var sql = $"{_generator.SelectAllSql} {whereClause}";
-        return _context.QueryAsync<TEntity>(sql, parameters);
-    }
+    public Task<IEnumerable<TEntity>> QueryAsync(FilterExpression<TEntity> filter)
+{
+    var sql = $"{_generator.SelectAllSql} WHERE {filter.Sql}";
+    return _context.QueryAsync<TEntity>(sql, filter.Parameters);
+}
 
     public Task<TEntity?> FirstOrDefaultAsync(string whereClause, object? parameters = null)
     {
