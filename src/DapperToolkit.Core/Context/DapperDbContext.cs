@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Data;
 
 using Dapper;
@@ -12,6 +13,7 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
     private readonly DapperDbContextOptions _options;
     private IDbConnection? _connection;
     private bool _disposed;
+    private readonly ConcurrentDictionary<Type, object> _sets = new();
 
     protected DapperDbContext(DapperDbContextOptions options)
     {
@@ -45,28 +47,19 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
         }
     }
 
-    public async Task<IEnumerable<T>> QueryAsync<T>(
-        string sql,
-        object? param = null,
-        IDbTransaction? transaction = null)
+    public async Task<IEnumerable<T>> QueryAsync<T>(string sql, object? param = null, IDbTransaction? transaction = null)
     {
         var connection = transaction?.Connection ?? Connection;
         return await connection.QueryAsync<T>(sql, param, transaction);
     }
 
-    public async Task<T?> QueryFirstOrDefaultAsync<T>(
-        string sql,
-        object? param = null,
-        IDbTransaction? transaction = null)
+    public async Task<T?> QueryFirstOrDefaultAsync<T>(string sql, object? param = null, IDbTransaction? transaction = null)
     {
         var connection = transaction?.Connection ?? Connection;
         return await connection.QueryFirstOrDefaultAsync<T>(sql, param, transaction);
     }
 
-    public async Task<int> ExecuteAsync(
-        string sql,
-        object? param = null,
-        IDbTransaction? transaction = null)
+    public async Task<int> ExecuteAsync(string sql, object? param = null, IDbTransaction? transaction = null)
     {
         var connection = transaction?.Connection ?? Connection;
         return await connection.ExecuteAsync(sql, param, transaction);
@@ -76,6 +69,14 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
     {
         var transaction = Connection.BeginTransaction();
         return Task.FromResult(transaction);
+    }
+
+    public DapperSet<TEntity> Set<TEntity>()
+            where TEntity : class
+    {
+        return (DapperSet<TEntity>)_sets.GetOrAdd(
+            typeof(TEntity),
+            _ => new DapperSet<TEntity>(this));
     }
 
     public void Dispose()
