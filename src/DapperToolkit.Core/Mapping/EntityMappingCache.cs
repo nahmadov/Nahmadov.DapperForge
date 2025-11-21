@@ -18,20 +18,22 @@ internal static class EntityMappingCache<TEntity>
         string? schema = tableAttr?.Schema;  // ⬅️ Schema dəstəyi
 
         var props = type.GetProperties(BindingFlags.Instance | BindingFlags.Public)
-                        .Where(p => p.CanRead && p.CanWrite && p.GetIndexParameters().Length == 0)
+                        .Where(p => 
+                            p.CanRead && 
+                            p.CanWrite && 
+                            p.GetIndexParameters().Length == 0  &&
+                            p.GetCustomAttribute<NotMappedAttribute>() is null)
                         .ToArray();
 
         if (props.Length == 0)
             throw new InvalidOperationException($"Type {type.Name} has no writable public properties.");
 
-        var propertyMappings = props
-        .Select(p =>
+        var propertyMappings = props.Select(p =>
         {
             var colAttr = p.GetCustomAttribute<ColumnAttribute>();
-            string colName = colAttr?.Name ?? p.Name;
-            return new PropertyMapping(p, colName);
-        })
-        .ToList();
+            var genAttr = p.GetCustomAttribute<DatabaseGeneratedAttribute>();
+            return new PropertyMapping(p, colAttr, genAttr);
+        }).ToList();
 
         var key = props.FirstOrDefault(p => p.GetCustomAttribute<KeyAttribute>() is not null);
 
