@@ -1,4 +1,6 @@
+using System.Linq.Expressions;
 using DapperToolkit.Core.Builders;
+using DapperToolkit.Core.Mapping;
 
 namespace DapperToolkit.Core.Context;
 
@@ -26,11 +28,17 @@ public sealed class DapperSet<TEntity> where TEntity : class
         return _context.QueryFirstOrDefaultAsync<TEntity>(_generator.SelectByIdSql, param);
     }
 
-    public Task<IEnumerable<TEntity>> QueryAsync(FilterExpression<TEntity> filter)
-{
-    var sql = $"{_generator.SelectAllSql} WHERE {filter.Sql}";
-    return _context.QueryAsync<TEntity>(sql, filter.Parameters);
-}
+    public Task<IEnumerable<TEntity>> WhereAsync(Expression<Func<TEntity, bool>> predicate)
+    {
+        var mapping = EntityMappingCache<TEntity>.Mapping;
+        var dialect = _generator.Dialect;  // SqlGenerator-dan public Dialect əlavə edirik
+
+        var visitor = new PredicateVisitor<TEntity>(mapping, dialect);
+        var (sql, parameters) = visitor.Translate(predicate);
+
+        var finalSql = $"{_generator.SelectAllSql} WHERE {sql}";
+        return _context.QueryAsync<TEntity>(finalSql, parameters);
+    }
 
     public Task<TEntity?> FirstOrDefaultAsync(string whereClause, object? parameters = null)
     {

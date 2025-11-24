@@ -6,4 +6,5 @@ public interface ISqlDialect
     string FormatParameter(string baseName);
     string QuoteIdentifier(string identifier);
     string BuildInsertReturningId(string baseInsertSql, string tableName, string keyColumnName);
+    string FormatBoolean(bool value);
 }

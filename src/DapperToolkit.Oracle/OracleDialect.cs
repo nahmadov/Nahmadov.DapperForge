@@ -13,7 +13,7 @@ public class OracleDialect : ISqlDialect
     public string QuoteIdentifier(string identifier) => $"\"{identifier}\"";
 
     public string BuildInsertReturningId(string baseInsertSql, string tableName, string keyColumnName)
-    {
-        throw new NotSupportedException("Oracle identity returning is not implemented yet.");
-    }
+        => throw new NotSupportedException("Oracle identity returning is not implemented yet.");
+
+    public string FormatBoolean(bool value) => value ? "1" : "0";
 }

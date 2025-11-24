@@ -13,7 +13,7 @@ public class SqlServerDialect : ISqlDialect
     public string QuoteIdentifier(string identifier) => $"[{identifier}]";
 
     public string BuildInsertReturningId(string baseInsertSql, string tableName, string keyColumnName)
-    {
-        return $"{baseInsertSql}; SELECT CAST(SCOPE_IDENTITY() AS int) AS {QuoteIdentifier(keyColumnName)};";
-    }
+        => $"{baseInsertSql}; SELECT CAST(SCOPE_IDENTITY() AS int) AS {QuoteIdentifier(keyColumnName)};";
+
+    public string FormatBoolean(bool value) => value ? "1" : "0";
 }

@@ -40,6 +40,8 @@ internal sealed class SqlGenerator<TEntity> where TEntity : class
         DeleteByIdSql = BuildDeleteSql(fullTableName, keyColumn);
     }
 
+    public ISqlDialect Dialect { get { return _dialect; } }
+
     private string BuildFullTableName()
     {
         var table = _dialect.QuoteIdentifier(_mapping.TableName);
