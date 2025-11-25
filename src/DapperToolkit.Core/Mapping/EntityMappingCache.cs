@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using System.Reflection;
+using DapperToolkit.Core.Attributes;
 
 namespace DapperToolkit.Core.Mapping;
 
@@ -18,10 +19,10 @@ internal static class EntityMappingCache<TEntity>
         string? schema = tableAttr?.Schema;  // ⬅️ Schema dəstəyi
 
         var props = type.GetProperties(BindingFlags.Instance | BindingFlags.Public)
-                        .Where(p => 
-                            p.CanRead && 
-                            p.CanWrite && 
-                            p.GetIndexParameters().Length == 0  &&
+                        .Where(p =>
+                            p.CanRead &&
+                            p.CanWrite &&
+                            p.GetIndexParameters().Length == 0 &&
                             p.GetCustomAttribute<NotMappedAttribute>() is null)
                         .ToArray();
 
@@ -35,18 +36,16 @@ internal static class EntityMappingCache<TEntity>
             return new PropertyMapping(p, colAttr, genAttr);
         }).ToList();
 
-        var key = props.FirstOrDefault(p => p.GetCustomAttribute<KeyAttribute>() is not null);
+        var isReadOnly = type.GetCustomAttribute<ReadOnlyEntityAttribute>() is not null;
 
-        key ??= props.FirstOrDefault(p => string.Equals(p.Name, "Id", StringComparison.OrdinalIgnoreCase));
+        PropertyInfo? key = props.FirstOrDefault(p => p.GetCustomAttribute<KeyAttribute>() is not null)
+                     ?? props.FirstOrDefault(p => string.Equals(p.Name, "Id", StringComparison.OrdinalIgnoreCase))
+                     ?? props.FirstOrDefault(p => string.Equals(p.Name, type.Name + "Id", StringComparison.OrdinalIgnoreCase));
 
-        if (key is null)
-        {
-            var candidate = type.Name + "Id";
-            key = props.FirstOrDefault(p => string.Equals(p.Name, candidate, StringComparison.OrdinalIgnoreCase));
-        }
+        if (key is null && !isReadOnly)
+        throw new InvalidOperationException(
+            $"Type {type.Name} has no key property. Define [Key] or an 'Id'/{type.Name}Id property.");
 
-        if (key is null)
-            throw new InvalidOperationException($"Type {type.Name} has no key property. Define [Key] or an 'Id'/{type.Name}Id property.");
 
         return new EntityMapping(type, tableName, schema, key, props, propertyMappings);
     }
