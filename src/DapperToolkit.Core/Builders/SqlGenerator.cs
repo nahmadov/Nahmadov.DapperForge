@@ -14,7 +14,12 @@ internal sealed class SqlGenerator<TEntity> where TEntity : class
     public string? KeyPropertyName => _mapping.KeyProperty?.Name;
 
     public PropertyInfo? KeyProperty => _mapping.KeyProperty;
-    public bool IsKeyIdentity => _mapping.PropertyMappings.FirstOrDefault(pm => pm.Property == _mapping.KeyProperty)?.IsIdentity ?? false;
+    public bool IsKeyIdentity =>
+        _mapping.KeyProperty is null
+            ? false
+            : _mapping.PropertyMappings
+                .FirstOrDefault(pm => pm.Property == _mapping.KeyProperty)?.IsIdentity ?? false;
+
     public string DialectName => _dialect.Name;
 
     public string SelectAllSql { get; }
@@ -24,34 +29,46 @@ internal sealed class SqlGenerator<TEntity> where TEntity : class
     public string UpdateSql { get; }
     public string DeleteByIdSql { get; }
 
+    public ISqlDialect Dialect => _dialect;
+
     public SqlGenerator(ISqlDialect? dialect)
     {
         _dialect = dialect ?? throw new ArgumentNullException(nameof(dialect));
         _mapping = EntityMappingCache<TEntity>.Mapping;
 
         var fullTableName = BuildFullTableName();
-        var keyColumn = GetKeyColumnName();
+        var keyColumn     = GetKeyColumnName();
+        var hasKey        = _mapping.KeyProperty is not null;
 
+        // 1) Hər zaman SELECT *
         SelectAllSql = BuildSelectAllSql(fullTableName);
-        if (keyColumn is not null && KeyPropertyName is not null)
+
+        // 2) ById yalnız key olduqda
+        if (hasKey && keyColumn is not null && KeyPropertyName is not null)
         {
             SelectByIdSql = BuildSelectByIdSql(SelectAllSql, keyColumn);
-            InsertSql = BuildInsertSql(fullTableName);
-            InsertReturningIdSql = BuildInsertReturningIdSql(fullTableName, keyColumn);
-            UpdateSql = BuildUpdateSql(fullTableName, keyColumn);
-            DeleteByIdSql = BuildDeleteSql(fullTableName, keyColumn);
         }
         else
         {
             SelectByIdSql = string.Empty;
-            InsertSql = string.Empty;
+        }
+
+        // 3) Mutating SQL yalnız non-readonly + key varsa
+        if (!_mapping.IsReadOnly && hasKey && keyColumn is not null && KeyPropertyName is not null)
+        {
+            InsertSql           = BuildInsertSql(fullTableName);
+            InsertReturningIdSql = BuildInsertReturningIdSql(fullTableName, keyColumn);
+            UpdateSql           = BuildUpdateSql(fullTableName, keyColumn);
+            DeleteByIdSql       = BuildDeleteSql(fullTableName, keyColumn);
+        }
+        else
+        {
+            InsertSql           = string.Empty;
             InsertReturningIdSql = null;
-            UpdateSql = string.Empty;
-            DeleteByIdSql = string.Empty;
+            UpdateSql           = string.Empty;
+            DeleteByIdSql       = string.Empty;
         }
     }
-
-    public ISqlDialect Dialect { get { return _dialect; } }
 
     private string BuildFullTableName()
     {
@@ -65,20 +82,30 @@ internal sealed class SqlGenerator<TEntity> where TEntity : class
 
     private string? GetKeyColumnName()
     {
-        var keyMapping = _mapping.PropertyMappings.FirstOrDefault(pm => pm.Property == _mapping.KeyProperty);
+        if (_mapping.KeyProperty is null)
+            return null;
+
+        var keyMapping = _mapping.PropertyMappings
+            .FirstOrDefault(pm => pm.Property == _mapping.KeyProperty);
+
         return keyMapping?.ColumnName;
     }
 
     private string BuildSelectAllSql(string fullTableName)
     {
-        var columnList = string.Join(", ", _mapping.PropertyMappings.Select(pm => $"{_dialect.QuoteIdentifier(pm.ColumnName)} AS {_dialect.QuoteIdentifier(pm.Property.Name)}"));
+        var columnList = string.Join(
+            ", ",
+            _mapping.PropertyMappings.Select(pm =>
+                $"{_dialect.QuoteIdentifier(pm.ColumnName)} AS {_dialect.QuoteIdentifier(pm.Property.Name)}"));
+
         return $"SELECT {columnList} FROM {fullTableName}";
     }
 
-    private string BuildSelectByIdSql(string selectAllSql, string? keyColumn)
+    private string BuildSelectByIdSql(string selectAllSql, string keyColumn)
     {
-        if (keyColumn is null || KeyPropertyName is null)
-            throw new InvalidOperationException("Cannot build SelectById SQL without a key column.");
+        if (KeyPropertyName is null)
+            throw new InvalidOperationException("Cannot build SelectById SQL without a key property.");
+
         var param = _dialect.FormatParameter(KeyPropertyName);
         return $"{selectAllSql} WHERE {_dialect.QuoteIdentifier(keyColumn)} = {param}";
     }
@@ -88,16 +115,16 @@ internal sealed class SqlGenerator<TEntity> where TEntity : class
         if (_mapping.IsReadOnly)
             throw new InvalidOperationException(
                 $"Entity '{typeof(TEntity).Name}' is marked as ReadOnly and cannot be modified.");
+
         var insertable = _mapping.PropertyMappings
-            .Where(pm => !pm.IsGenerated)    // Identity + Computed çıxarıldı
+            .Where(pm => !pm.IsGenerated)
             .ToList();
 
         if (insertable.Count == 0)
         {
             throw new InvalidOperationException(
                 $"Entity '{typeof(TEntity).Name}' has no insertable columns. " +
-                "All properties are marked as DatabaseGenerated or NotMapped."
-            );
+                "All properties are marked as DatabaseGenerated or NotMapped.");
         }
 
         var columns = string.Join(", ", insertable.Select(pm => _dialect.QuoteIdentifier(pm.ColumnName)));
@@ -106,27 +133,25 @@ internal sealed class SqlGenerator<TEntity> where TEntity : class
         return $"INSERT INTO {fullTableName} ({columns}) VALUES ({parameters})";
     }
 
-    private string? BuildInsertReturningIdSql(string fullTableName, string? keyColumn)
+    private string? BuildInsertReturningIdSql(string fullTableName, string keyColumn)
     {
-        if (_mapping.IsReadOnly || keyColumn is null)
-            throw new InvalidOperationException(
-                $"Entity '{typeof(TEntity).Name}' is marked as ReadOnly and cannot be modified.");
+        // Buraya yalnız non-readonly + key varsa gəlirik
         try
         {
             return _dialect.BuildInsertReturningId(InsertSql, fullTableName, keyColumn);
         }
         catch (NotSupportedException)
         {
-            // optional: or leave empty and let callers ignore it
             return null;
         }
     }
 
-    private string BuildUpdateSql(string fullTableName, string? keyColumn)
+    private string BuildUpdateSql(string fullTableName, string keyColumn)
     {
-        if (_mapping.IsReadOnly || keyColumn is null || KeyPropertyName is null)
+        if (_mapping.IsReadOnly || KeyPropertyName is null)
             throw new InvalidOperationException(
                 $"Entity '{typeof(TEntity).Name}' is marked as ReadOnly and cannot be modified.");
+
         var updatable = _mapping.PropertyMappings
             .Where(pm => pm.Property != _mapping.KeyProperty && !pm.IsGenerated)
             .ToList();
@@ -135,22 +160,24 @@ internal sealed class SqlGenerator<TEntity> where TEntity : class
         {
             throw new InvalidOperationException(
                 $"Entity '{typeof(TEntity).Name}' has no updatable columns. " +
-                "All properties are marked as DatabaseGenerated, Computed, or NotMapped."
-            );
+                "All properties are marked as DatabaseGenerated, Computed, or NotMapped.");
         }
 
-        var setClause = string.Join(", ",
-            updatable.Select(pm => $"{_dialect.QuoteIdentifier(pm.ColumnName)} = {_dialect.FormatParameter(pm.Property.Name)}")
-        );
+        var setClause = string.Join(
+            ", ",
+            updatable.Select(pm =>
+                $"{_dialect.QuoteIdentifier(pm.ColumnName)} = {_dialect.FormatParameter(pm.Property.Name)}"));
+
         var keyParam = _dialect.FormatParameter(KeyPropertyName);
         return $"UPDATE {fullTableName} SET {setClause} WHERE {_dialect.QuoteIdentifier(keyColumn)} = {keyParam}";
     }
 
-    private string BuildDeleteSql(string fullTableName, string? keyColumn)
+    private string BuildDeleteSql(string fullTableName, string keyColumn)
     {
-        if (_mapping.IsReadOnly || KeyPropertyName is null || keyColumn is null)
+        if (_mapping.IsReadOnly || KeyPropertyName is null)
             throw new InvalidOperationException(
                 $"Entity '{typeof(TEntity).Name}' is marked as ReadOnly and cannot be modified.");
+
         var keyParam = _dialect.FormatParameter(KeyPropertyName);
         return $"DELETE FROM {fullTableName} WHERE {_dialect.QuoteIdentifier(keyColumn)} = {keyParam}";
     }

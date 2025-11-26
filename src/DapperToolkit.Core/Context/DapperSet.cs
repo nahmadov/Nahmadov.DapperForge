@@ -14,9 +14,9 @@ public sealed class DapperSet<TEntity> where TEntity : class
 
     internal DapperSet(DapperDbContext context, SqlGenerator<TEntity> generator)
     {
-        _context = context;
+        _context   = context;
         _generator = generator;
-        _mapping = EntityMappingCache<TEntity>.Mapping;
+        _mapping   = EntityMappingCache<TEntity>.Mapping;
     }
 
     public Task<IEnumerable<TEntity>> GetAllAsync()
@@ -24,9 +24,22 @@ public sealed class DapperSet<TEntity> where TEntity : class
 
     public Task<TEntity?> FindAsync(object key)
     {
+        if (_mapping.KeyProperty is null)
+        {
+            throw new InvalidOperationException(
+                $"Entity '{typeof(TEntity).Name}' has no key and does not support FindAsync.");
+        }
+
+        if (string.IsNullOrWhiteSpace(_generator.SelectByIdSql))
+        {
+            throw new InvalidOperationException(
+                $"FindAsync is not configured for entity '{typeof(TEntity).Name}'. " +
+                "Ensure the entity has a key and a proper mapping.");
+        }
+
         var param = new Dictionary<string, object?>
         {
-            [_mapping.KeyProperty!.Name] = key
+            [_mapping.KeyProperty.Name] = key
         };
 
         return _context.QueryFirstOrDefaultAsync<TEntity>(_generator.SelectByIdSql, param);
@@ -35,7 +48,7 @@ public sealed class DapperSet<TEntity> where TEntity : class
     public Task<IEnumerable<TEntity>> WhereAsync(Expression<Func<TEntity, bool>> predicate)
     {
         var mapping = EntityMappingCache<TEntity>.Mapping;
-        var dialect = _generator.Dialect;  // SqlGenerator-dan public Dialect əlavə edirik
+        var dialect = _generator.Dialect;
 
         var visitor = new PredicateVisitor<TEntity>(mapping, dialect);
         var (sql, parameters) = visitor.Translate(predicate);
@@ -47,7 +60,8 @@ public sealed class DapperSet<TEntity> where TEntity : class
     public Task<TEntity?> FirstOrDefaultAsync(Expression<Func<TEntity, bool>> predicate)
     {
         var mapping = EntityMappingCache<TEntity>.Mapping;
-        var dialect = _generator.Dialect;  // SqlGenerator-dan public Dialect əlavə edirik
+        var dialect = _generator.Dialect;
+
         var visitor = new PredicateVisitor<TEntity>(mapping, dialect);
         var (sql, parameters) = visitor.Translate(predicate);
 
@@ -59,6 +73,12 @@ public sealed class DapperSet<TEntity> where TEntity : class
     {
         EnsureCanMutate();
         EntityValidator<TEntity>.ValidateForInsert(entity, _mapping);
+        if (string.IsNullOrWhiteSpace(_generator.InsertSql))
+        {
+            throw new InvalidOperationException(
+                $"Insert SQL is not configured for entity '{typeof(TEntity).Name}'.");
+        }
+
         return _context.ExecuteAsync(_generator.InsertSql, entity);
     }
 
@@ -66,21 +86,46 @@ public sealed class DapperSet<TEntity> where TEntity : class
     {
         EnsureCanMutate();
         EntityValidator<TEntity>.ValidateForUpdate(entity, _mapping);
+        if (string.IsNullOrWhiteSpace(_generator.UpdateSql))
+        {
+            throw new InvalidOperationException(
+                $"Update SQL is not configured for entity '{typeof(TEntity).Name}'.");
+        }
+
         return _context.ExecuteAsync(_generator.UpdateSql, entity);
     }
 
     public Task<int> DeleteAsync(TEntity entity)
     {
         EnsureCanMutate();
+        if (string.IsNullOrWhiteSpace(_generator.DeleteByIdSql))
+        {
+            throw new InvalidOperationException(
+                $"Delete SQL is not configured for entity '{typeof(TEntity).Name}'.");
+        }
+
         return _context.ExecuteAsync(_generator.DeleteByIdSql, entity);
     }
 
     public Task<int> DeleteByIdAsync(object key)
     {
         EnsureCanMutate();
+
+        if (_mapping.KeyProperty is null)
+        {
+            throw new InvalidOperationException(
+                $"Entity '{typeof(TEntity).Name}' has no key and cannot be deleted by id.");
+        }
+
+        if (string.IsNullOrWhiteSpace(_generator.DeleteByIdSql))
+        {
+            throw new InvalidOperationException(
+                $"Delete SQL is not configured for entity '{typeof(TEntity).Name}'.");
+        }
+
         var param = new Dictionary<string, object?>
         {
-            [_mapping.KeyProperty!.Name] = key
+            [_mapping.KeyProperty.Name] = key
         };
 
         return _context.ExecuteAsync(_generator.DeleteByIdSql, param);
@@ -90,6 +135,7 @@ public sealed class DapperSet<TEntity> where TEntity : class
     {
         EnsureCanMutate();
         EntityValidator<TEntity>.ValidateForInsert(entity, _mapping);
+
         if (_generator.InsertReturningIdSql is null)
         {
             throw new NotSupportedException(
@@ -110,19 +156,22 @@ public sealed class DapperSet<TEntity> where TEntity : class
         var keyProp = _generator.KeyProperty;
         try
         {
-            var targetType = keyProp!.PropertyType;
-
-            object? converted = id;
-            if (!targetType.IsAssignableFrom(typeof(TKey)))
+            if (keyProp is not null)
             {
-                converted = Convert.ChangeType(id, targetType);
-            }
+                var targetType = keyProp.PropertyType;
 
-            keyProp.SetValue(entity, converted);
+                object? converted = id;
+                if (!targetType.IsAssignableFrom(typeof(TKey)))
+                {
+                    converted = Convert.ChangeType(id, targetType);
+                }
+
+                keyProp.SetValue(entity, converted);
+            }
         }
         catch
         {
-            // burda fail etsə də kritik deyil: caller yenə id-ni alıb qaytaracaq
+            // burada fail etsə də kritik deyil: caller yenə id-ni alıb qaytaracaq
         }
 
         return id;
