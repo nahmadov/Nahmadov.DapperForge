@@ -18,7 +18,7 @@ var host = Host.CreateDefaultBuilder(args)
         var connStr = ctx.Configuration.GetSection("ConnectionSample")["ConnectionString"];
         services.AddDapperDbContext<AppDapperDbContext>(options =>
         {
-            options.UseSqlServer(connStr ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found."));
+            options.UseSqlServer(connStr ?? throw new InvalidOperationException("Connection string not found."));
         });
 
         services.AddTransient<ReportService>();

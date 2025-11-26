@@ -13,6 +13,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\DapperToolkit.Core\DapperToolkit.Core.csproj" />
+    <ProjectReference Include="..\..\src\DapperToolkit.SqlServer\DapperToolkit.SqlServer.csproj" />
+    <ProjectReference Include="..\..\src\DapperToolkit.Oracle\DapperToolkit.Oracle.csproj" />
   </ItemGroup>
 
   <ItemGroup>

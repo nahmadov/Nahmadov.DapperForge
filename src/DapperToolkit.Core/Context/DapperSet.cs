@@ -44,10 +44,15 @@ public sealed class DapperSet<TEntity> where TEntity : class
         return _context.QueryAsync<TEntity>(finalSql, parameters);
     }
 
-    public Task<TEntity?> FirstOrDefaultAsync(string whereClause, object? parameters = null)
+    public Task<TEntity?> FirstOrDefaultAsync(Expression<Func<TEntity, bool>> predicate)
     {
-        var sql = $"{_generator.SelectAllSql} {whereClause}";
-        return _context.QueryFirstOrDefaultAsync<TEntity>(sql, parameters);
+        var mapping = EntityMappingCache<TEntity>.Mapping;
+        var dialect = _generator.Dialect;  // SqlGenerator-dan public Dialect əlavə edirik
+        var visitor = new PredicateVisitor<TEntity>(mapping, dialect);
+        var (sql, parameters) = visitor.Translate(predicate);
+
+        var finalSql = $"{_generator.SelectAllSql} WHERE {sql}";
+        return _context.QueryFirstOrDefaultAsync<TEntity>(finalSql, parameters);
     }
 
     public Task<int> InsertAsync(TEntity entity)
