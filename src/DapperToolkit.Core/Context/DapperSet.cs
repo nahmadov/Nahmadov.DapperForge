@@ -1,6 +1,8 @@
 using System.Linq.Expressions;
+
 using DapperToolkit.Core.Builders;
 using DapperToolkit.Core.Mapping;
+using DapperToolkit.Core.Validation;
 
 namespace DapperToolkit.Core.Context;
 
@@ -8,11 +10,13 @@ public sealed class DapperSet<TEntity> where TEntity : class
 {
     private readonly DapperDbContext _context;
     private readonly SqlGenerator<TEntity> _generator;
+    private readonly EntityMapping _mapping;
 
     internal DapperSet(DapperDbContext context, SqlGenerator<TEntity> generator)
     {
         _context = context;
         _generator = generator;
+        _mapping = EntityMappingCache<TEntity>.Mapping;
     }
 
     public Task<IEnumerable<TEntity>> GetAllAsync()
@@ -22,7 +26,7 @@ public sealed class DapperSet<TEntity> where TEntity : class
     {
         var param = new Dictionary<string, object?>
         {
-            [_generator.KeyPropertyName] = key
+            [_mapping.KeyProperty!.Name] = key
         };
 
         return _context.QueryFirstOrDefaultAsync<TEntity>(_generator.SelectByIdSql, param);
@@ -47,19 +51,31 @@ public sealed class DapperSet<TEntity> where TEntity : class
     }
 
     public Task<int> InsertAsync(TEntity entity)
-        => _context.ExecuteAsync(_generator.InsertSql, entity);
+    {
+        EnsureCanMutate();
+        EntityValidator<TEntity>.ValidateForInsert(entity, _mapping);
+        return _context.ExecuteAsync(_generator.InsertSql, entity);
+    }
 
     public Task<int> UpdateAsync(TEntity entity)
-        => _context.ExecuteAsync(_generator.UpdateSql, entity);
+    {
+        EnsureCanMutate();
+        EntityValidator<TEntity>.ValidateForUpdate(entity, _mapping);
+        return _context.ExecuteAsync(_generator.UpdateSql, entity);
+    }
 
     public Task<int> DeleteAsync(TEntity entity)
-        => _context.ExecuteAsync(_generator.DeleteByIdSql, entity);
+    {
+        EnsureCanMutate();
+        return _context.ExecuteAsync(_generator.DeleteByIdSql, entity);
+    }
 
     public Task<int> DeleteByIdAsync(object key)
     {
+        EnsureCanMutate();
         var param = new Dictionary<string, object?>
         {
-            [_generator.KeyPropertyName] = key
+            [_mapping.KeyProperty!.Name] = key
         };
 
         return _context.ExecuteAsync(_generator.DeleteByIdSql, param);
@@ -67,6 +83,8 @@ public sealed class DapperSet<TEntity> where TEntity : class
 
     public async Task<TKey> InsertAndGetIdAsync<TKey>(TEntity entity)
     {
+        EnsureCanMutate();
+        EntityValidator<TEntity>.ValidateForInsert(entity, _mapping);
         if (_generator.InsertReturningIdSql is null)
         {
             throw new NotSupportedException(
@@ -87,7 +105,7 @@ public sealed class DapperSet<TEntity> where TEntity : class
         var keyProp = _generator.KeyProperty;
         try
         {
-            var targetType = keyProp.PropertyType;
+            var targetType = keyProp!.PropertyType;
 
             object? converted = id;
             if (!targetType.IsAssignableFrom(typeof(TKey)))
@@ -103,5 +121,20 @@ public sealed class DapperSet<TEntity> where TEntity : class
         }
 
         return id;
+    }
+
+    private void EnsureCanMutate()
+    {
+        if (_mapping.IsReadOnly)
+        {
+            throw new InvalidOperationException(
+                $"Entity '{typeof(TEntity).Name}' is marked as ReadOnly and cannot be modified.");
+        }
+
+        if (_mapping.KeyProperty is null)
+        {
+            throw new InvalidOperationException(
+                $"Entity '{typeof(TEntity).Name}' has no key and cannot be updated/deleted.");
+        }
     }
 }
