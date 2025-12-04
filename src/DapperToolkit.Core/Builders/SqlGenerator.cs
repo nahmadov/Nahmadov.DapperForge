@@ -122,7 +122,7 @@ internal sealed class SqlGenerator<TEntity> where TEntity : class
 
     private string? BuildInsertReturningIdSql(string insertSql)
     {
-        if (_keyColumns.Length == 0)
+        if (_keyColumns.Length != 1)
             return null;
 
         try

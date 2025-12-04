@@ -13,7 +13,12 @@ public class OracleDialect : ISqlDialect
     public string QuoteIdentifier(string identifier) => $"\"{identifier}\"";
 
     public string BuildInsertReturningId(string baseInsertSql, string tableName, string keyColumnName)
-        => throw new NotSupportedException("Oracle identity returning is not implemented yet.");
+    {
+        if (string.IsNullOrWhiteSpace(keyColumnName))
+            throw new ArgumentNullException(nameof(keyColumnName));
+
+        return $"{baseInsertSql} RETURNING {QuoteIdentifier(keyColumnName)} INTO {FormatParameter(keyColumnName)}";
+    }
 
     public string FormatBoolean(bool value) => value ? "1" : "0";
 }

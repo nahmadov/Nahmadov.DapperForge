@@ -1,7 +1,9 @@
 using System.Collections.Generic;
+using System.Data;
 using System.Linq.Expressions;
 using System.Reflection;
 
+using Dapper;
 using DapperToolkit.Core.Builders;
 using DapperToolkit.Core.Mapping;
 using DapperToolkit.Core.Validation;
@@ -141,7 +143,15 @@ public sealed class DapperSet<TEntity> where TEntity : class
                 "Use InsertAsync and set the key manually or extend the dialect.");
         }
 
-        var id = await _context.QueryFirstOrDefaultAsync<TKey>(_generator.InsertReturningIdSql, entity);
+        TKey? id;
+        if (string.Equals(_generator.DialectName, "Oracle", StringComparison.OrdinalIgnoreCase))
+        {
+            id = await ExecuteOracleInsertReturningAsync<TKey>(entity);
+        }
+        else
+        {
+            id = await _context.QueryFirstOrDefaultAsync<TKey>(_generator.InsertReturningIdSql, entity);
+        }
 
         if (id == null || EqualityComparer<TKey>.Default.Equals(id, default!))
         {
@@ -232,5 +242,18 @@ public sealed class DapperSet<TEntity> where TEntity : class
         }
 
         return resultFromObject;
+    }
+
+    private async Task<TKey> ExecuteOracleInsertReturningAsync<TKey>(TEntity entity)
+    {
+        var keyProp = _generator.KeyProperty
+            ?? throw new InvalidOperationException($"Entity '{typeof(TEntity).Name}' has no key property.");
+
+        var parameters = new DynamicParameters(entity);
+        parameters.Add(keyProp.Name, dbType: DbType.Object, direction: ParameterDirection.Output);
+
+        await _context.ExecuteAsync(_generator.InsertReturningIdSql!, parameters);
+
+        return parameters.Get<TKey>(keyProp.Name);
     }
 }
