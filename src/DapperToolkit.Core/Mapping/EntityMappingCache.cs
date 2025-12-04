@@ -54,7 +54,8 @@ internal static class EntityMappingCache<TEntity>
         if (keyProps.Count == 0)
         {
             var single = props.FirstOrDefault(p => string.Equals(p.Name, "Id", StringComparison.OrdinalIgnoreCase))
-                      ?? props.FirstOrDefault(p => string.Equals(p.Name, type.Name + "Id", StringComparison.OrdinalIgnoreCase));
+                      ?? props.FirstOrDefault(p => string.Equals(p.Name, type.Name + "Id", StringComparison.OrdinalIgnoreCase))
+                      ?? props.FirstOrDefault(p => NormalizeKeyName(p.Name) == NormalizeKeyName(type.Name + "Id"));
 
             if (single is not null)
                 keyProps.Add(single);
@@ -66,4 +67,7 @@ internal static class EntityMappingCache<TEntity>
 
         return new EntityMapping(type, tableName, schema, keyProps, props, propertyMappings, isReadOnly);
     }
+
+    private static string NormalizeKeyName(string name)
+        => new(name.Where(char.IsLetterOrDigit).Select(char.ToUpperInvariant).ToArray());
 }

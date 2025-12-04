@@ -5,6 +5,7 @@ using System.Linq.Expressions;
 
 using DapperToolkit.Core.Builders;
 using DapperToolkit.Core.Mapping;
+using DapperToolkit.Oracle;
 using DapperToolkit.SqlServer;
 using Xunit;
 
@@ -69,6 +70,30 @@ public class PredicateVisitorTests
 
         Assert.Equal("([username] IS NULL)", sql);
         Assert.Empty(parameters);
+    }
+
+    [Fact]
+    public void Translates_Empty_String_Equals_To_Parameter()
+    {
+        var (sql, parameters) = Translate(u => u.Name == string.Empty);
+
+        Assert.Equal("([username] = @p0)", sql);
+        Assert.Single(parameters);
+        Assert.Equal(string.Empty, parameters["p0"]);
+    }
+
+    [Fact]
+    public void Oracle_Contains_Uses_Escape_And_Colon_Params()
+    {
+        var mapping = EntityMappingCache<UserEntity>.Mapping;
+        var visitor = new PredicateVisitor<UserEntity>(mapping, OracleDialect.Instance);
+
+        var (sql, parameters) = visitor.Translate(u => u.Name.Contains("a%b"));
+
+        Assert.Equal("\"username\" LIKE :p0 ESCAPE '\\\\'", sql);
+        var dict = Assert.IsType<Dictionary<string, object>>(parameters);
+        Assert.Single(dict);
+        Assert.Equal("%a\\%b%", dict["p0"]);
     }
 
     private static (string Sql, IDictionary<string, object> Parameters) Translate(Expression<Func<UserEntity, bool>> predicate)
