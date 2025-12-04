@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Data;
+using System.Linq.Expressions;
 using System.Reflection;
 
 using Dapper;
@@ -102,7 +103,7 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
 
         var builder = new DapperModelBuilder(_options.Dialect!);
 
-        // 1) Attribute-lərə əsasən ilkin mapping-ləri yığ
+        // 1) Attribute-lərə əsaslanan ilkin mapping-ləri yığ
         InitializeMappingsFromAttributes(builder);
 
         // 2) İstifadəçinin OnModelCreating config-lərini tətbiq et
@@ -111,7 +112,7 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
         // 3) DbSet property adından table adı konvensiyası
         ApplyDbSetNameConvention(builder);
 
-        // 4) Nəticə modelini içəri yığ
+        // 4) Nəticə modelini yadda saxla
         foreach (var kvp in builder.Build())
         {
             _model[kvp.Key] = kvp.Value;
@@ -120,16 +121,84 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
         _modelBuilt = true;
     }
 
-    private static void InitializeMappingsFromAttributes(DapperModelBuilder builder)
+    private void InitializeMappingsFromAttributes(DapperModelBuilder builder)
     {
-        // Burda mövcud EntityMappingCache istifadə edə bilərsən.
-        // Məs: builder.EntityFromExistingMapping<T>(EntityMappingCache<T>.Mapping);
-        // Bu hissəni öz Mapping implementasiyana uyğun dolduracaqsan.
+        var entityTypes = GetType()
+            .GetProperties(BindingFlags.Instance | BindingFlags.Public)
+            .Where(p =>
+                p.PropertyType.IsGenericType &&
+                p.PropertyType.GetGenericTypeDefinition() == typeof(DapperSet<>))
+            .Select(p => p.PropertyType.GetGenericArguments()[0])
+            .Distinct()
+            .ToList();
+
+        foreach (var entityType in entityTypes)
+        {
+            ApplyAttributeMapping(builder, entityType);
+        }
+    }
+
+    private static void ApplyAttributeMapping(DapperModelBuilder builder, Type entityType)
+    {
+        var method = typeof(DapperDbContext)
+            .GetMethod(nameof(ApplyAttributeMappingGeneric), BindingFlags.NonPublic | BindingFlags.Static)!
+            .MakeGenericMethod(entityType);
+
+        method.Invoke(null, new object[] { builder });
+    }
+
+    private static void ApplyAttributeMappingGeneric<TEntity>(DapperModelBuilder builder)
+        where TEntity : class
+    {
+        var mapping = EntityMappingCache<TEntity>.Mapping;
+        var entityBuilder = builder.Entity<TEntity>();
+
+        entityBuilder.ToTable(mapping.TableName, mapping.Schema);
+
+        if (mapping.KeyProperties.Count == 0)
+        {
+            entityBuilder.HasNoKey();
+        }
+        else
+        {
+            var keyExpressions = mapping.KeyProperties
+                .Select(BuildPropertyLambda<TEntity>)
+                .ToArray();
+            entityBuilder.HasKey(keyExpressions);
+        }
+
+        foreach (var pm in mapping.PropertyMappings)
+        {
+            var pb = entityBuilder.Property(BuildPropertyLambda<TEntity>(pm.Property));
+            if (!string.Equals(pm.ColumnName, pm.Property.Name, StringComparison.Ordinal))
+            {
+                pb.HasColumnName(pm.ColumnName);
+            }
+            if (pm.IsRequired)
+            {
+                pb.IsRequired();
+            }
+            if (pm.MaxLength is not null)
+            {
+                pb.HasMaxLength(pm.MaxLength.Value);
+            }
+            if (pm.IsReadOnly)
+            {
+                pb.IsReadOnly();
+            }
+        }
+    }
+
+    private static Expression<Func<TEntity, object?>> BuildPropertyLambda<TEntity>(PropertyInfo property)
+    {
+        var parameter = Expression.Parameter(typeof(TEntity), "e");
+        var access = Expression.Property(parameter, property);
+        var convert = Expression.Convert(access, typeof(object));
+        return Expression.Lambda<Func<TEntity, object?>>(convert, parameter);
     }
 
     private void ApplyDbSetNameConvention(DapperModelBuilder builder)
     {
-        // DbContext-in public instance property-lərinə baxırıq
         var props = GetType()
             .GetProperties(BindingFlags.Instance | BindingFlags.Public)
             .Where(p =>
@@ -140,7 +209,6 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
         {
             var entityType = prop.PropertyType.GetGenericArguments()[0];
 
-            // Əgər entity üçün ToTable çağırılmayıbsa, DbSet property adını table adı kimi qoy
             builder.Entity(entityType, b =>
             {
                 if (string.IsNullOrWhiteSpace(b.TableName))
@@ -157,7 +225,6 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
         if (_model.TryGetValue(type, out var mapping))
             return mapping;
 
-        // ModelBuilder heç nə etməyibsə, fallback olaraq köhnə cache-dən istifadə et
         var fallback = EntityMappingCache<TEntity>.Mapping;
         _model[type] = fallback;
         return fallback;

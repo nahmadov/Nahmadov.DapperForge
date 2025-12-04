@@ -35,9 +35,19 @@ public class PredicateVisitorTests
     {
         var (sql, parameters) = Translate(u => u.Name.Contains("abc"));
 
-        Assert.Equal("[username] LIKE @p0", sql);
+        Assert.Equal("[username] LIKE @p0 ESCAPE '\\\\'", sql);
         Assert.Single(parameters);
         Assert.Equal("%abc%", parameters["p0"]);
+    }
+
+    [Fact]
+    public void Translates_StringContains_Escapes_Wildcards()
+    {
+        var (sql, parameters) = Translate(u => u.Name.Contains("a%b_c"));
+
+        Assert.Equal("[username] LIKE @p0 ESCAPE '\\\\'", sql);
+        Assert.Single(parameters);
+        Assert.Equal("%a\\%b\\_c%", parameters["p0"]);
     }
 
     [Fact]

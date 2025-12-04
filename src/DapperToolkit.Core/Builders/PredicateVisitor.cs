@@ -112,11 +112,7 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
             node.Object is MemberExpression memberExpr &&
             memberExpr.Expression is ParameterExpression)
         {
-            Visit(memberExpr);
-            _sql.Append(" LIKE ");
-
-            var value = EvaluateExpression(node.Arguments[0]);
-            AppendParameter($"%{value}%");
+            AppendLikeContains(memberExpr, node.Arguments[0]);
             return node;
         }
 
@@ -283,6 +279,25 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
             return _dialect.QuoteIdentifier(map.ColumnName);
 
         throw new InvalidOperationException($"No mapping found for property '{prop.Name}'.");
+    }
+
+    private void AppendLikeContains(MemberExpression memberExpr, Expression argument)
+    {
+        Visit(memberExpr);
+        _sql.Append(" LIKE ");
+
+        var raw = EvaluateExpression(argument);
+        var escaped = EscapeLikeValue(raw?.ToString() ?? string.Empty);
+        AppendParameter($"%{escaped}%");
+        _sql.Append(" ESCAPE '\\\\'");
+    }
+
+    private static string EscapeLikeValue(string value)
+    {
+        return value
+            .Replace("\\", "\\\\")
+            .Replace("%", "\\%")
+            .Replace("_", "\\_");
     }
 
     private static bool IsNullConstant(Expression expr)
