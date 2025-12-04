@@ -12,12 +12,14 @@ public sealed class DapperSet<TEntity> where TEntity : class
     private readonly SqlGenerator<TEntity> _generator;
     private readonly EntityMapping _mapping;
 
-    internal DapperSet(DapperDbContext context, SqlGenerator<TEntity> generator)
+    internal DapperSet(DapperDbContext context, SqlGenerator<TEntity> generator, EntityMapping mapping)
     {
-        _context   = context;
+        _context = context;
         _generator = generator;
-        _mapping   = EntityMappingCache<TEntity>.Mapping;
+        _mapping = mapping;
     }
+
+    #region Query
 
     public Task<IEnumerable<TEntity>> GetAllAsync()
         => _context.QueryAsync<TEntity>(_generator.SelectAllSql);
@@ -47,10 +49,8 @@ public sealed class DapperSet<TEntity> where TEntity : class
 
     public Task<IEnumerable<TEntity>> WhereAsync(Expression<Func<TEntity, bool>> predicate)
     {
-        var mapping = EntityMappingCache<TEntity>.Mapping;
         var dialect = _generator.Dialect;
-
-        var visitor = new PredicateVisitor<TEntity>(mapping, dialect);
+        var visitor = new PredicateVisitor<TEntity>(_mapping, dialect);
         var (sql, parameters) = visitor.Translate(predicate);
 
         var finalSql = $"{_generator.SelectAllSql} WHERE {sql}";
@@ -59,15 +59,17 @@ public sealed class DapperSet<TEntity> where TEntity : class
 
     public Task<TEntity?> FirstOrDefaultAsync(Expression<Func<TEntity, bool>> predicate)
     {
-        var mapping = EntityMappingCache<TEntity>.Mapping;
         var dialect = _generator.Dialect;
-
-        var visitor = new PredicateVisitor<TEntity>(mapping, dialect);
+        var visitor = new PredicateVisitor<TEntity>(_mapping, dialect);
         var (sql, parameters) = visitor.Translate(predicate);
 
         var finalSql = $"{_generator.SelectAllSql} WHERE {sql}";
         return _context.QueryFirstOrDefaultAsync<TEntity>(finalSql, parameters);
     }
+
+    #endregion
+
+    #region Insert / Update / Delete
 
     public Task<int> InsertAsync(TEntity entity)
     {
@@ -176,6 +178,8 @@ public sealed class DapperSet<TEntity> where TEntity : class
 
         return id;
     }
+
+    #endregion
 
     private void EnsureCanMutate()
     {

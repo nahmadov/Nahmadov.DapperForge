@@ -31,10 +31,10 @@ internal sealed class SqlGenerator<TEntity> where TEntity : class
 
     public ISqlDialect Dialect => _dialect;
 
-    public SqlGenerator(ISqlDialect? dialect)
+    public SqlGenerator(ISqlDialect? dialect, EntityMapping mapping)
     {
         _dialect = dialect ?? throw new ArgumentNullException(nameof(dialect));
-        _mapping = EntityMappingCache<TEntity>.Mapping;
+        _mapping = mapping ?? throw new ArgumentNullException(nameof(mapping));
 
         var fullTableName = BuildFullTableName();
         var keyColumn     = GetKeyColumnName();

@@ -3,6 +3,7 @@ using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
 using DapperToolkit.Core.Builders;
+using DapperToolkit.Core.Mapping;
 using DapperToolkit.Oracle;
 using DapperToolkit.SqlServer;
 using Xunit;
@@ -14,7 +15,7 @@ public class SqlGeneratorTests
     [Fact]
     public void SelectAll_IncludesSchemaAndAliases()
     {
-        var generator = new SqlGenerator<UserEntity>(SqlServerDialect.Instance);
+        var generator = new SqlGenerator<UserEntity>(SqlServerDialect.Instance, BuildMapping());
 
         var sql = generator.SelectAllSql;
 
@@ -27,7 +28,7 @@ public class SqlGeneratorTests
     [Fact]
     public void Insert_SkipsIdentityAndUsesParameters()
     {
-        var generator = new SqlGenerator<UserEntity>(SqlServerDialect.Instance);
+        var generator = new SqlGenerator<UserEntity>(SqlServerDialect.Instance, BuildMapping());
 
         var sql = generator.InsertSql;
 
@@ -41,7 +42,7 @@ public class SqlGeneratorTests
     [Fact]
     public void Update_SetsNonKeyColumns_And_FiltersByKey()
     {
-        var generator = new SqlGenerator<UserEntity>(SqlServerDialect.Instance);
+        var generator = new SqlGenerator<UserEntity>(SqlServerDialect.Instance, BuildMapping());
 
         var sql = generator.UpdateSql;
 
@@ -54,7 +55,7 @@ public class SqlGeneratorTests
     [Fact]
     public void Delete_FiltersByKey()
     {
-        var generator = new SqlGenerator<UserEntity>(SqlServerDialect.Instance);
+        var generator = new SqlGenerator<UserEntity>(SqlServerDialect.Instance, BuildMapping());
 
         var sql = generator.DeleteByIdSql;
 
@@ -64,7 +65,7 @@ public class SqlGeneratorTests
     [Fact]
     public void InsertReturningId_IsGeneratedForSqlServer()
     {
-        var generator = new SqlGenerator<UserEntity>(SqlServerDialect.Instance);
+        var generator = new SqlGenerator<UserEntity>(SqlServerDialect.Instance, BuildMapping());
 
         Assert.NotNull(generator.InsertReturningIdSql);
         Assert.Contains("SCOPE_IDENTITY()", generator.InsertReturningIdSql);
@@ -73,7 +74,8 @@ public class SqlGeneratorTests
     [Fact]
     public void InsertReturningId_IsNullForOracle()
     {
-        var generator = new SqlGenerator<UserEntity>(OracleDialect.Instance);
+        var mapping = BuildMapping();
+        var generator = new SqlGenerator<UserEntity>(OracleDialect.Instance, mapping);
 
         Assert.Null(generator.InsertReturningIdSql);
     }
@@ -89,5 +91,12 @@ public class SqlGeneratorTests
         public string Name { get; set; } = string.Empty;
 
         public bool IsActive { get; set; }
+    }
+
+    private static EntityMapping BuildMapping()
+    {
+        var builder = new DapperModelBuilder(SqlServerDialect.Instance);
+        builder.Entity<UserEntity>();
+        return builder.Build()[typeof(UserEntity)];
     }
 }

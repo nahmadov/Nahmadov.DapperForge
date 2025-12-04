@@ -47,6 +47,6 @@ internal static class EntityMappingCache<TEntity>
             $"Type {type.Name} has no key property. Define [Key] or an 'Id'/{type.Name}Id property.");
 
 
-        return new EntityMapping(type, tableName, schema, key, props, propertyMappings);
+        return new EntityMapping(type, tableName, schema, key, props, propertyMappings, isReadOnly);
     }
 }
