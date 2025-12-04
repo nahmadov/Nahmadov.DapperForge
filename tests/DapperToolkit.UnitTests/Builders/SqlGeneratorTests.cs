@@ -80,6 +80,34 @@ public class SqlGeneratorTests
         Assert.Null(generator.InsertReturningIdSql);
     }
 
+    [Fact]
+    public void CompositeKey_Uses_All_Key_Columns_In_Where()
+    {
+        var mapping = BuildCompositeMapping();
+        var generator = new SqlGenerator<CompositeEntity>(SqlServerDialect.Instance, mapping);
+
+        Assert.Contains("WHERE [TenantId] = @TenantId AND [UserId] = @UserId", generator.SelectByIdSql);
+        Assert.Contains("WHERE [TenantId] = @TenantId AND [UserId] = @UserId", generator.DeleteByIdSql);
+    }
+
+    [Fact]
+    public void OracleSequence_Uses_NextVal_In_Insert()
+    {
+        var builder = new DapperModelBuilder(OracleDialect.Instance);
+        builder.Entity<OracleSeqEntity>(b =>
+        {
+            b.ToTable("Users");
+            b.HasKey(e => e.Id);
+            b.Property(e => e.Id).HasSequence("user_seq");
+            b.Property(e => e.Name).IsRequired();
+        });
+        var mapping = builder.Build()[typeof(OracleSeqEntity)];
+
+        var generator = new SqlGenerator<OracleSeqEntity>(OracleDialect.Instance, mapping);
+
+        Assert.Contains("\"user_seq\".NEXTVAL", generator.InsertSql);
+    }
+
     [Table("Users", Schema = "dbo")]
     private class UserEntity
     {
@@ -98,5 +126,28 @@ public class SqlGeneratorTests
         var builder = new DapperModelBuilder(SqlServerDialect.Instance);
         builder.Entity<UserEntity>();
         return builder.Build()[typeof(UserEntity)];
+    }
+
+    private static EntityMapping BuildCompositeMapping()
+    {
+        var builder = new DapperModelBuilder(SqlServerDialect.Instance);
+        builder.Entity<CompositeEntity>(b =>
+        {
+            b.ToTable("Users", "dbo");
+            b.HasKey(e => e.TenantId, e => e.UserId);
+        });
+        return builder.Build()[typeof(CompositeEntity)];
+    }
+
+    private class CompositeEntity
+    {
+        public int TenantId { get; set; }
+        public int UserId { get; set; }
+    }
+
+    private class OracleSeqEntity
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = string.Empty;
     }
 }

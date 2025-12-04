@@ -1,4 +1,6 @@
+using System.Collections.Generic;
 using System.Linq.Expressions;
+using System.Reflection;
 
 using DapperToolkit.Core.Builders;
 using DapperToolkit.Core.Mapping;
@@ -26,7 +28,7 @@ public sealed class DapperSet<TEntity> where TEntity : class
 
     public Task<TEntity?> FindAsync(object key)
     {
-        if (_mapping.KeyProperty is null)
+        if (_mapping.KeyProperties.Count == 0)
         {
             throw new InvalidOperationException(
                 $"Entity '{typeof(TEntity).Name}' has no key and does not support FindAsync.");
@@ -39,10 +41,7 @@ public sealed class DapperSet<TEntity> where TEntity : class
                 "Ensure the entity has a key and a proper mapping.");
         }
 
-        var param = new Dictionary<string, object?>
-        {
-            [_mapping.KeyProperty.Name] = key
-        };
+        var param = BuildKeyParameters(key);
 
         return _context.QueryFirstOrDefaultAsync<TEntity>(_generator.SelectByIdSql, param);
     }
@@ -113,7 +112,7 @@ public sealed class DapperSet<TEntity> where TEntity : class
     {
         EnsureCanMutate();
 
-        if (_mapping.KeyProperty is null)
+        if (_mapping.KeyProperties.Count == 0)
         {
             throw new InvalidOperationException(
                 $"Entity '{typeof(TEntity).Name}' has no key and cannot be deleted by id.");
@@ -125,10 +124,7 @@ public sealed class DapperSet<TEntity> where TEntity : class
                 $"Delete SQL is not configured for entity '{typeof(TEntity).Name}'.");
         }
 
-        var param = new Dictionary<string, object?>
-        {
-            [_mapping.KeyProperty.Name] = key
-        };
+        var param = BuildKeyParameters(key);
 
         return _context.ExecuteAsync(_generator.DeleteByIdSql, param);
     }
@@ -189,10 +185,52 @@ public sealed class DapperSet<TEntity> where TEntity : class
                 $"Entity '{typeof(TEntity).Name}' is marked as ReadOnly and cannot be modified.");
         }
 
-        if (_mapping.KeyProperty is null)
+        if (_mapping.KeyProperties.Count == 0)
         {
             throw new InvalidOperationException(
                 $"Entity '{typeof(TEntity).Name}' has no key and cannot be updated/deleted.");
         }
+    }
+
+    private Dictionary<string, object?> BuildKeyParameters(object key)
+    {
+        if (_mapping.KeyProperties.Count == 1)
+        {
+            return new Dictionary<string, object?>
+            {
+                [_mapping.KeyProperties[0].Name] = key
+            };
+        }
+
+        if (key is IDictionary<string, object?> dict)
+        {
+            var result = new Dictionary<string, object?>();
+            foreach (var kp in _mapping.KeyProperties)
+            {
+                if (!dict.TryGetValue(kp.Name, out var value))
+                {
+                    throw new InvalidOperationException(
+                        $"Key parameter missing value for '{kp.Name}' for entity '{typeof(TEntity).Name}'.");
+                }
+                result[kp.Name] = value;
+            }
+            return result;
+        }
+
+        var keyType = key.GetType();
+        var resultFromObject = new Dictionary<string, object?>();
+        foreach (var kp in _mapping.KeyProperties)
+        {
+            var prop = keyType.GetProperty(kp.Name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.IgnoreCase);
+            if (prop is null)
+            {
+                throw new InvalidOperationException(
+                    $"Key object does not contain property '{kp.Name}' required for entity '{typeof(TEntity).Name}'.");
+            }
+
+            resultFromObject[kp.Name] = prop.GetValue(key);
+        }
+
+        return resultFromObject;
     }
 }

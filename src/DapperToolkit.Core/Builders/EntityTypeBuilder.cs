@@ -24,8 +24,6 @@ public class EntityTypeBuilder<TEntity>(EntityConfig entity) : IEntityTypeBuilde
     {
         if (keyExpressions.Length == 0)
             throw new ArgumentException("At least one key expression is required.", nameof(keyExpressions));
-        if (keyExpressions.Length > 1)
-            throw new NotSupportedException("Composite keys are not supported yet.");
 
         _entity.KeyProperties.Clear();
         foreach (var expr in keyExpressions)

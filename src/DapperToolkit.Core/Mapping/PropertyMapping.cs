@@ -9,7 +9,8 @@ public sealed class PropertyMapping(
     DatabaseGeneratedAttribute? genAttr,
     bool isReadOnly = false,
     bool isRequired = false,
-    int? maxLength = null)
+    int? maxLength = null,
+    string? sequenceName = null)
 {
     public PropertyInfo Property { get; } = prop ?? throw new ArgumentNullException(nameof(prop));
     public string ColumnName { get; } = colAttr?.Name ?? prop.Name;
@@ -17,8 +18,10 @@ public sealed class PropertyMapping(
     public bool IsReadOnly { get; } = isReadOnly;
     public bool IsRequired { get; } = isRequired;
     public int? MaxLength { get; } = maxLength;
+    public string? SequenceName { get; } = sequenceName;
 
     public bool IsIdentity => GeneratedOption == DatabaseGeneratedOption.Identity;
     public bool IsComputed => GeneratedOption == DatabaseGeneratedOption.Computed;
     public bool IsGenerated => IsIdentity || IsComputed || IsReadOnly;
+    public bool UsesSequence => !string.IsNullOrWhiteSpace(SequenceName);
 }

@@ -1,7 +1,6 @@
 using System.Reflection;
 
 using DapperToolkit.Core.Interfaces;
-
 using DapperToolkit.Core.Mapping;
 
 namespace DapperToolkit.Core.Builders;
@@ -11,13 +10,13 @@ internal sealed class SqlGenerator<TEntity> where TEntity : class
     private readonly ISqlDialect _dialect;
     private readonly EntityMapping _mapping;
     private readonly string _fullTableName;
-    private readonly string? _keyColumn;
+    private readonly string[] _keyColumns;
     private readonly PropertyMapping[] _insertableProperties;
     private readonly PropertyMapping[] _updatableProperties;
 
     public string TableName => _mapping.TableName;
-    public string? KeyPropertyName => _mapping.KeyProperty?.Name;
-    public PropertyInfo? KeyProperty => _mapping.KeyProperty;
+    public string? KeyPropertyName => _mapping.KeyProperties.FirstOrDefault()?.Name;
+    public PropertyInfo? KeyProperty => _mapping.KeyProperties.FirstOrDefault();
 
     public bool IsKeyIdentity =>
         _mapping.KeyProperty is not null && (_mapping.PropertyMappings
@@ -40,9 +39,9 @@ internal sealed class SqlGenerator<TEntity> where TEntity : class
         _mapping = mapping ?? throw new ArgumentNullException(nameof(mapping));
 
         _fullTableName = BuildFullTableName();
-        _keyColumn = GetKeyColumnName();
-        _insertableProperties = [.. _mapping.PropertyMappings.Where(pm => !pm.IsGenerated)];
-        _updatableProperties = [.. _mapping.PropertyMappings.Where(pm => pm.Property != _mapping.KeyProperty && !pm.IsGenerated)];
+        _keyColumns = GetKeyColumns();
+        _insertableProperties = [.. _mapping.PropertyMappings.Where(pm => !pm.IsGenerated || pm.UsesSequence)];
+        _updatableProperties = [.. _mapping.PropertyMappings.Where(pm => !_mapping.KeyProperties.Contains(pm.Property) && !pm.IsGenerated)];
 
         SelectAllSql = BuildSelectAllSql();
         SelectByIdSql = BuildSelectByIdSql();
@@ -60,17 +59,6 @@ internal sealed class SqlGenerator<TEntity> where TEntity : class
         return $"{_dialect.QuoteIdentifier(_mapping.Schema!)}.{table}";
     }
 
-    private string? GetKeyColumnName()
-    {
-        if (_mapping.KeyProperty is null)
-            return null;
-
-        var keyMapping = _mapping.PropertyMappings
-            .FirstOrDefault(pm => pm.Property == _mapping.KeyProperty);
-
-        return keyMapping?.ColumnName;
-    }
-
     private string BuildSelectAllSql()
     {
         var columnList = string.Join(
@@ -83,11 +71,18 @@ internal sealed class SqlGenerator<TEntity> where TEntity : class
 
     private string BuildSelectByIdSql()
     {
-        if (_keyColumn is null || KeyPropertyName is null)
+        if (_keyColumns.Length == 0 || KeyPropertyName is null)
             return string.Empty;
 
-        var param = _dialect.FormatParameter(KeyPropertyName);
-        return $"{SelectAllSql} WHERE {_dialect.QuoteIdentifier(_keyColumn)} = {param}";
+        var predicates = _mapping.KeyProperties
+            .Select(p =>
+            {
+                var column = GetColumnNameForProperty(p);
+                var param = _dialect.FormatParameter(p.Name);
+                return $"{_dialect.QuoteIdentifier(column)} = {param}";
+            });
+
+        return $"{SelectAllSql} WHERE {string.Join(" AND ", predicates)}";
     }
 
     private (string insert, string? insertReturningId, string update, string delete) BuildMutatingSql()
@@ -113,16 +108,26 @@ internal sealed class SqlGenerator<TEntity> where TEntity : class
         }
 
         var columns = string.Join(", ", _insertableProperties.Select(pm => _dialect.QuoteIdentifier(pm.ColumnName)));
-        var parameters = string.Join(", ", _insertableProperties.Select(pm => _dialect.FormatParameter(pm.Property.Name)));
+        var values = string.Join(", ", _insertableProperties.Select(pm =>
+        {
+            if (!string.IsNullOrWhiteSpace(pm.SequenceName))
+            {
+                return $"{_dialect.QuoteIdentifier(pm.SequenceName!)}.NEXTVAL";
+            }
+            return _dialect.FormatParameter(pm.Property.Name);
+        }));
 
-        return $"INSERT INTO {_fullTableName} ({columns}) VALUES ({parameters})";
+        return $"INSERT INTO {_fullTableName} ({columns}) VALUES ({values})";
     }
 
     private string? BuildInsertReturningIdSql(string insertSql)
     {
+        if (_keyColumns.Length == 0)
+            return null;
+
         try
         {
-            return _dialect.BuildInsertReturningId(insertSql, _fullTableName, _keyColumn!);
+            return _dialect.BuildInsertReturningId(insertSql, _fullTableName, _keyColumns.First());
         }
         catch (NotSupportedException)
         {
@@ -144,14 +149,14 @@ internal sealed class SqlGenerator<TEntity> where TEntity : class
             _updatableProperties.Select(pm =>
                 $"{_dialect.QuoteIdentifier(pm.ColumnName)} = {_dialect.FormatParameter(pm.Property.Name)}"));
 
-        var keyParam = _dialect.FormatParameter(KeyPropertyName!);
-        return $"UPDATE {_fullTableName} SET {setClause} WHERE {_dialect.QuoteIdentifier(_keyColumn!)} = {keyParam}";
+        var keyPredicate = BuildKeyPredicate();
+        return $"UPDATE {_fullTableName} SET {setClause} WHERE {keyPredicate}";
     }
 
     private string BuildDeleteSql()
     {
-        var keyParam = _dialect.FormatParameter(KeyPropertyName!);
-        return $"DELETE FROM {_fullTableName} WHERE {_dialect.QuoteIdentifier(_keyColumn!)} = {keyParam}";
+        var keyPredicate = BuildKeyPredicate();
+        return $"DELETE FROM {_fullTableName} WHERE {keyPredicate}";
     }
 
     private void EnsureNotReadOnly()
@@ -165,10 +170,45 @@ internal sealed class SqlGenerator<TEntity> where TEntity : class
 
     private void EnsureHasKey()
     {
-        if (_mapping.KeyProperty is null || _keyColumn is null || KeyPropertyName is null)
+        if (_mapping.KeyProperties.Count == 0 || _keyColumns.Length == 0 || KeyPropertyName is null)
         {
             throw new InvalidOperationException(
                 $"Entity '{typeof(TEntity).Name}' has no key configured for mutations.");
         }
+    }
+
+    private string[] GetKeyColumns()
+    {
+        if (_mapping.KeyProperties.Count == 0)
+            return Array.Empty<string>();
+
+        var list = new List<string>();
+        foreach (var kp in _mapping.KeyProperties)
+        {
+            var map = _mapping.PropertyMappings.FirstOrDefault(pm => pm.Property == kp)
+                ?? throw new InvalidOperationException($"Key property '{kp.Name}' has no mapping.");
+            list.Add(map.ColumnName);
+        }
+        return list.ToArray();
+    }
+
+    private string BuildKeyPredicate()
+    {
+        var predicates = _mapping.KeyProperties.Select(p =>
+        {
+            var column = GetColumnNameForProperty(p);
+            var param = _dialect.FormatParameter(p.Name);
+            return $"{_dialect.QuoteIdentifier(column)} = {param}";
+        });
+
+        return string.Join(" AND ", predicates);
+    }
+
+    private string GetColumnNameForProperty(PropertyInfo property)
+    {
+        var map = _mapping.PropertyMappings.FirstOrDefault(pm => pm.Property == property)
+            ?? throw new InvalidOperationException($"No mapping found for property '{property.Name}'.");
+
+        return map.ColumnName;
     }
 }

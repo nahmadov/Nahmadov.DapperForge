@@ -47,15 +47,23 @@ internal static class EntityMappingCache<TEntity>
 
         var isReadOnly = type.GetCustomAttribute<ReadOnlyEntityAttribute>() is not null;
 
-        PropertyInfo? key = props.FirstOrDefault(p => p.GetCustomAttribute<KeyAttribute>() is not null)
-                     ?? props.FirstOrDefault(p => string.Equals(p.Name, "Id", StringComparison.OrdinalIgnoreCase))
-                     ?? props.FirstOrDefault(p => string.Equals(p.Name, type.Name + "Id", StringComparison.OrdinalIgnoreCase));
+        var keyProps = props
+            .Where(p => p.GetCustomAttribute<KeyAttribute>() is not null)
+            .ToList();
 
-        if (key is null && !isReadOnly)
-        throw new InvalidOperationException(
-            $"Type {type.Name} has no key property. Define [Key] or an 'Id'/{type.Name}Id property.");
+        if (keyProps.Count == 0)
+        {
+            var single = props.FirstOrDefault(p => string.Equals(p.Name, "Id", StringComparison.OrdinalIgnoreCase))
+                      ?? props.FirstOrDefault(p => string.Equals(p.Name, type.Name + "Id", StringComparison.OrdinalIgnoreCase));
 
+            if (single is not null)
+                keyProps.Add(single);
+        }
 
-        return new EntityMapping(type, tableName, schema, key, props, propertyMappings, isReadOnly);
+        if (keyProps.Count == 0 && !isReadOnly)
+            throw new InvalidOperationException(
+                $"Type {type.Name} has no key property. Define [Key] or an 'Id'/{type.Name}Id property.");
+
+        return new EntityMapping(type, tableName, schema, keyProps, props, propertyMappings, isReadOnly);
     }
 }

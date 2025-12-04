@@ -24,6 +24,15 @@ public class PropertyBuilder(PropertyConfig property)
         return this;
     }
 
+    public PropertyBuilder HasSequence(string sequenceName)
+    {
+        if (string.IsNullOrWhiteSpace(sequenceName))
+            throw new ArgumentException("Sequence name cannot be empty.", nameof(sequenceName));
+
+        _property.SetSequence(sequenceName);
+        return this;
+    }
+
     public PropertyBuilder IsReadOnly()
     {
         _property.SetReadOnly(true);

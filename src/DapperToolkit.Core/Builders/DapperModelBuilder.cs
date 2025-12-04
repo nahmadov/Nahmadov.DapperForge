@@ -148,36 +148,42 @@ public class DapperModelBuilder(ISqlDialect dialect)
                 databaseGeneratedAttr,
                 propConfig?.IsReadOnly ?? false,
                 required,
-                maxLength);
+                maxLength,
+                propConfig?.SequenceName);
 
             propertyMappings.Add(mapping);
         }
 
-        PropertyInfo? key = null;
+        var keyProps = new List<PropertyInfo>();
         if (config.HasKey)
         {
-            if (config.KeyProperties.Count > 1)
+            if (config.KeyProperties.Count > 0)
             {
-                throw new NotSupportedException(
-                    $"Entity '{type.Name}' currently supports only a single key property.");
-            }
-
-            if (config.KeyProperties.Count == 1)
-            {
-                var keyName = config.KeyProperties[0];
-                key = props.FirstOrDefault(p => string.Equals(p.Name, keyName, StringComparison.Ordinal))
-                     ?? throw new InvalidOperationException(
-                        $"Key property '{keyName}' not found on entity type '{type.Name}'.");
+                foreach (var keyName in config.KeyProperties)
+                {
+                    var keyProp = props.FirstOrDefault(p => string.Equals(p.Name, keyName, StringComparison.Ordinal))
+                        ?? throw new InvalidOperationException(
+                            $"Key property '{keyName}' not found on entity type '{type.Name}'.");
+                    keyProps.Add(keyProp);
+                }
             }
             else
             {
-                key = props.FirstOrDefault(p => p.GetCustomAttribute<KeyAttribute>() is not null)
-                   ?? props.FirstOrDefault(p => string.Equals(p.Name, "Id", StringComparison.OrdinalIgnoreCase))
-                   ?? props.FirstOrDefault(p =>
-                        string.Equals(p.Name, type.Name + "Id", StringComparison.OrdinalIgnoreCase));
+                var attrs = props.Where(p => p.GetCustomAttribute<KeyAttribute>() is not null).ToList();
+                if (attrs.Count > 0)
+                {
+                    keyProps.AddRange(attrs);
+                }
+                else
+                {
+                    var convention = props.FirstOrDefault(p => string.Equals(p.Name, "Id", StringComparison.OrdinalIgnoreCase))
+                        ?? props.FirstOrDefault(p => string.Equals(p.Name, type.Name + "Id", StringComparison.OrdinalIgnoreCase));
+                    if (convention is not null)
+                        keyProps.Add(convention);
+                }
             }
 
-            if (key is null && !config.IsReadOnly && readOnlyAttr is null)
+            if (keyProps.Count == 0 && !config.IsReadOnly && readOnlyAttr is null)
             {
                 throw new InvalidOperationException(
                     $"Type {type.Name} has no key property. Define HasKey(...) or mark the entity as read-only/HasNoKey.");
@@ -190,7 +196,7 @@ public class DapperModelBuilder(ISqlDialect dialect)
             type,
             tableName,
             schema,
-            key,
+            keyProps,
             props,
             propertyMappings,
             isReadOnly);
