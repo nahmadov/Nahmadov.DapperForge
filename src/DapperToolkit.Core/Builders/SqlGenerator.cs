@@ -92,8 +92,8 @@ internal sealed class SqlGenerator<TEntity> where TEntity : class
 
     private (string insert, string? insertReturningId, string update, string delete) BuildMutatingSql()
     {
-        if (_mapping.IsReadOnly || _keyColumn is null || KeyPropertyName is null)
-            return (string.Empty, null, string.Empty, string.Empty);
+        EnsureNotReadOnly();
+        EnsureHasKey();
 
         var insert = BuildInsertSql();
         var insertReturningId = BuildInsertReturningIdSql(insert);
@@ -105,10 +105,6 @@ internal sealed class SqlGenerator<TEntity> where TEntity : class
 
     private string BuildInsertSql()
     {
-        if (_mapping.IsReadOnly)
-            throw new InvalidOperationException(
-                $"Entity '{typeof(TEntity).Name}' is marked as ReadOnly and cannot be modified.");
-
         if (_insertableProperties.Length == 0)
         {
             throw new InvalidOperationException(
@@ -136,10 +132,6 @@ internal sealed class SqlGenerator<TEntity> where TEntity : class
 
     private string BuildUpdateSql()
     {
-        if (_mapping.IsReadOnly || KeyPropertyName is null || _keyColumn is null)
-            throw new InvalidOperationException(
-                $"Entity '{typeof(TEntity).Name}' is marked as ReadOnly and cannot be modified.");
-
         if (_updatableProperties.Length == 0)
         {
             throw new InvalidOperationException(
@@ -152,17 +144,31 @@ internal sealed class SqlGenerator<TEntity> where TEntity : class
             _updatableProperties.Select(pm =>
                 $"{_dialect.QuoteIdentifier(pm.ColumnName)} = {_dialect.FormatParameter(pm.Property.Name)}"));
 
-        var keyParam = _dialect.FormatParameter(KeyPropertyName);
-        return $"UPDATE {_fullTableName} SET {setClause} WHERE {_dialect.QuoteIdentifier(_keyColumn)} = {keyParam}";
+        var keyParam = _dialect.FormatParameter(KeyPropertyName!);
+        return $"UPDATE {_fullTableName} SET {setClause} WHERE {_dialect.QuoteIdentifier(_keyColumn!)} = {keyParam}";
     }
 
     private string BuildDeleteSql()
     {
-        if (_mapping.IsReadOnly || KeyPropertyName is null || _keyColumn is null)
+        var keyParam = _dialect.FormatParameter(KeyPropertyName!);
+        return $"DELETE FROM {_fullTableName} WHERE {_dialect.QuoteIdentifier(_keyColumn!)} = {keyParam}";
+    }
+
+    private void EnsureNotReadOnly()
+    {
+        if (_mapping.IsReadOnly)
+        {
             throw new InvalidOperationException(
                 $"Entity '{typeof(TEntity).Name}' is marked as ReadOnly and cannot be modified.");
+        }
+    }
 
-        var keyParam = _dialect.FormatParameter(KeyPropertyName);
-        return $"DELETE FROM {_fullTableName} WHERE {_dialect.QuoteIdentifier(_keyColumn)} = {keyParam}";
+    private void EnsureHasKey()
+    {
+        if (_mapping.KeyProperty is null || _keyColumn is null || KeyPropertyName is null)
+        {
+            throw new InvalidOperationException(
+                $"Entity '{typeof(TEntity).Name}' has no key configured for mutations.");
+        }
     }
 }
