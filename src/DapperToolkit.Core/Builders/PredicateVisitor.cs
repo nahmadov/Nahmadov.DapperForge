@@ -19,6 +19,7 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
     private int _paramIndex;
     private bool _ignoreCase;
     private readonly bool _defaultIgnoreCase;
+    private readonly bool _treatEmptyStringAsNull;
 
     public PredicateVisitor(EntityMapping mapping, ISqlDialect dialect)
     {
@@ -26,6 +27,7 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
         _dialect = dialect ?? throw new ArgumentNullException(nameof(dialect));
         _propertyLookup = _mapping.PropertyMappings.ToDictionary(pm => pm.Property, pm => pm);
         _defaultIgnoreCase = string.Equals(_dialect.Name, "Oracle", StringComparison.OrdinalIgnoreCase);
+        _treatEmptyStringAsNull = string.Equals(_dialect.Name, "Oracle", StringComparison.OrdinalIgnoreCase);
     }
 
     public (string Sql, object Parameters) Translate(Expression<Func<TEntity, bool>> predicate, bool? ignoreCase = null)
@@ -51,6 +53,9 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
             return node;
 
         if (TryHandleNullComparison(node))
+            return node;
+
+        if (TryHandleStringEquality(node))
             return node;
 
         _sql.Append('(');
@@ -188,13 +193,13 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
         if (node.NodeType is not (ExpressionType.Equal or ExpressionType.NotEqual))
             return false;
 
-        if (IsNullConstant(node.Right))
+        if (IsNullLike(node.Right))
         {
             AppendNullComparison(node.Left, node.NodeType == ExpressionType.Equal);
             return true;
         }
 
-        if (IsNullConstant(node.Left))
+        if (IsNullLike(node.Left))
         {
             AppendNullComparison(node.Right, node.NodeType == ExpressionType.Equal);
             return true;
@@ -242,6 +247,45 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
         _sql.Append(value ? "1=1" : "1=0");
     }
 
+    private bool TryHandleStringEquality(BinaryExpression node)
+    {
+        if (node.NodeType is not (ExpressionType.Equal or ExpressionType.NotEqual))
+            return false;
+
+        MemberExpression? member = null;
+        Expression? other = null;
+
+        if (node.Left is MemberExpression ml && IsStringProperty(ml))
+        {
+            member = ml;
+            other = node.Right;
+        }
+        else if (node.Right is MemberExpression mr && IsStringProperty(mr))
+        {
+            member = mr;
+            other = node.Left;
+        }
+
+        if (member is null || other is null)
+            return false;
+
+        var column = GetColumnNameForMember(member);
+        var left = _ignoreCase ? $"LOWER({column})" : column;
+
+        var value = EvaluateExpression(other);
+        if (IsNullLike(value))
+        {
+            _sql.Append($"({column} {(node.NodeType == ExpressionType.Equal ? "IS NULL" : "IS NOT NULL")})");
+            return true;
+        }
+
+        var paramSql = AddParameter(value);
+        var right = _ignoreCase ? $"LOWER({paramSql})" : paramSql;
+        var op = node.NodeType == ExpressionType.Equal ? "=" : "<>";
+        _sql.Append($"({left} {op} {right})");
+        return true;
+    }
+
     private bool IsBooleanComparison(BinaryExpression node, out MemberExpression member, out bool value)
     {
         if (node.Left is MemberExpression left && IsEntityBooleanMember(left) &&
@@ -284,6 +328,12 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
         var propertyType = ((PropertyInfo)node.Member).PropertyType;
         var underlying = Nullable.GetUnderlyingType(propertyType) ?? propertyType;
         return underlying == typeof(bool);
+    }
+
+    private bool IsStringProperty(MemberExpression node)
+    {
+        return PredicateVisitor<TEntity>.IsEntityProperty(node) &&
+               ((PropertyInfo)node.Member).PropertyType == typeof(string);
     }
 
     private static bool IsEntityProperty(MemberExpression node)
@@ -348,19 +398,22 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
             .Replace("_", "\\_");
     }
 
-    private static bool IsNullConstant(Expression expr)
+    private bool IsNullLike(Expression expr)
     {
         if (expr is ConstantExpression constant)
-            return constant.Value is null;
+            return IsNullLike(constant.Value);
 
         if (expr is MemberExpression member && member.Expression is ConstantExpression closure)
         {
             var value = GetValueFromClosure(closure.Value, member.Member);
-            return value is null;
+            return IsNullLike(value);
         }
 
-        return EvaluateExpression(expr) is null;
+        return IsNullLike(EvaluateExpression(expr));
     }
+
+    private bool IsNullLike(object? value)
+        => value is null || (_treatEmptyStringAsNull && value is string s && s.Length == 0);
 
     private void AppendParameter(object? value)
     {
