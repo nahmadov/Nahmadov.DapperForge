@@ -18,22 +18,24 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
     private readonly Dictionary<string, object?> _parameters = new();
     private int _paramIndex;
     private bool _ignoreCase;
+    private readonly bool _defaultIgnoreCase;
 
     public PredicateVisitor(EntityMapping mapping, ISqlDialect dialect)
     {
         _mapping = mapping ?? throw new ArgumentNullException(nameof(mapping));
         _dialect = dialect ?? throw new ArgumentNullException(nameof(dialect));
         _propertyLookup = _mapping.PropertyMappings.ToDictionary(pm => pm.Property, pm => pm);
+        _defaultIgnoreCase = string.Equals(_dialect.Name, "Oracle", StringComparison.OrdinalIgnoreCase);
     }
 
-    public (string Sql, object Parameters) Translate(Expression<Func<TEntity, bool>> predicate, bool ignoreCase = false)
+    public (string Sql, object Parameters) Translate(Expression<Func<TEntity, bool>> predicate, bool? ignoreCase = null)
     {
         ArgumentNullException.ThrowIfNull(predicate);
 
         _sql.Clear();
         _parameters.Clear();
         _paramIndex = 0;
-        _ignoreCase = ignoreCase;
+        _ignoreCase = ignoreCase ?? _defaultIgnoreCase;
 
         if (!TryHandleBooleanProjection(predicate.Body))
         {

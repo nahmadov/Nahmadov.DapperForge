@@ -85,7 +85,7 @@ public sealed class DapperSet<TEntity> where TEntity : class
         return _context.ExecuteAsync(_generator.InsertSql, entity);
     }
 
-    public Task<int> UpdateAsync(TEntity entity)
+    public async Task<int> UpdateAsync(TEntity entity)
     {
         EnsureCanMutate();
         EntityValidator<TEntity>.ValidateForUpdate(entity, _mapping);
@@ -95,10 +95,18 @@ public sealed class DapperSet<TEntity> where TEntity : class
                 $"Update SQL is not configured for entity '{typeof(TEntity).Name}'.");
         }
 
-        return _context.ExecuteAsync(_generator.UpdateSql, entity);
+        var affected = await _context.ExecuteAsync(_generator.UpdateSql, entity);
+        if (affected == 0)
+        {
+            throw new DBConcurrencyException(
+                $"Update failed for entity '{typeof(TEntity).Name}': no rows were affected. " +
+                "The entity may have been modified or deleted by another transaction.");
+        }
+
+        return affected;
     }
 
-    public Task<int> DeleteAsync(TEntity entity)
+    public async Task<int> DeleteAsync(TEntity entity)
     {
         EnsureCanMutate();
         if (string.IsNullOrWhiteSpace(_generator.DeleteByIdSql))
@@ -107,10 +115,18 @@ public sealed class DapperSet<TEntity> where TEntity : class
                 $"Delete SQL is not configured for entity '{typeof(TEntity).Name}'.");
         }
 
-        return _context.ExecuteAsync(_generator.DeleteByIdSql, entity);
+        var affected = await _context.ExecuteAsync(_generator.DeleteByIdSql, entity);
+        if (affected == 0)
+        {
+            throw new DBConcurrencyException(
+                $"Delete failed for entity '{typeof(TEntity).Name}': no rows were affected. " +
+                "The entity may have been modified or deleted by another transaction.");
+        }
+
+        return affected;
     }
 
-    public Task<int> DeleteByIdAsync(object key)
+    public async Task<int> DeleteByIdAsync(object key)
     {
         EnsureCanMutate();
 
@@ -128,7 +144,15 @@ public sealed class DapperSet<TEntity> where TEntity : class
 
         var param = BuildKeyParameters(key);
 
-        return _context.ExecuteAsync(_generator.DeleteByIdSql, param);
+        var affected = await _context.ExecuteAsync(_generator.DeleteByIdSql, param);
+        if (affected == 0)
+        {
+            throw new DBConcurrencyException(
+                $"Delete failed for entity '{typeof(TEntity).Name}': no rows were affected. " +
+                "The entity may have been modified or deleted by another transaction.");
+        }
+
+        return affected;
     }
 
     public async Task<TKey> InsertAndGetIdAsync<TKey>(TEntity entity)
