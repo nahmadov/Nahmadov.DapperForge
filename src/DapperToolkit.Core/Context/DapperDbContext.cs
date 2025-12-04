@@ -225,6 +225,7 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
     internal EntityMapping GetEntityMapping<TEntity>() where TEntity : class
     {
         var type = typeof(TEntity);
+        EnsureModelBuilt();
         if (_model.TryGetValue(type, out var mapping))
             return mapping;
 
