@@ -27,11 +27,15 @@ var host = Host.CreateDefaultBuilder(args)
 
 var report = host.Services.GetRequiredService<ReportService>();
 
+// Insert a demo user
+await report.AddUserAsync("alice", isActive: true);
+
 var deleted = await report.DeleteOldLogsAsync();
 Console.WriteLine($"Deleted rows: {deleted}");
 
-var users = await report.GetUsersAsync();
+// Fetch active users with case-insensitive starts-with filter
+var users = await report.GetActiveUsersAsync(startsWith: "a");
 foreach (var u in users)
 {
-    Console.WriteLine($"{u.Id} - {u.Name}");
+    Console.WriteLine($"{u.Id} - {u.Name} (active: {u.IsActive})");
 }

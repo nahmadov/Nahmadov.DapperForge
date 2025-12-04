@@ -66,6 +66,23 @@ public class PredicateVisitorTests
     }
 
     [Fact]
+    public void CaseInsensitive_StartsWith_And_EndsWith()
+    {
+        var mapping = EntityMappingCache<UserEntity>.Mapping;
+        var visitor = new PredicateVisitor<UserEntity>(mapping, SqlServerDialect.Instance);
+
+        var (startsSql, startsParams) = visitor.Translate(u => u.Name.StartsWith("Ab"), ignoreCase: true);
+        Assert.Equal("LOWER([username]) LIKE LOWER(@p0) ESCAPE '\\\\'", startsSql);
+        var startsDict = Assert.IsType<Dictionary<string, object>>(startsParams);
+        Assert.Equal("Ab%", startsDict["p0"]);
+
+        var (endsSql, endsParams) = visitor.Translate(u => u.Name.EndsWith("Cd"), ignoreCase: true);
+        Assert.Equal("LOWER([username]) LIKE LOWER(@p0) ESCAPE '\\\\'", endsSql);
+        var endsDict = Assert.IsType<Dictionary<string, object>>(endsParams);
+        Assert.Equal("%Cd", endsDict["p0"]);
+    }
+
+    [Fact]
     public void CaseInsensitive_Like_Uses_Lower()
     {
         var mapping = EntityMappingCache<UserEntity>.Mapping;

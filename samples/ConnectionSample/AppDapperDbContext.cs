@@ -1,3 +1,4 @@
+using DapperToolkit.Core.Builders;
 using DapperToolkit.Core.Common;
 using DapperToolkit.Core.Context;
 
@@ -6,10 +7,19 @@ namespace ConnectionSample;
 
 public class AppDapperDbContext(DapperDbContextOptions<AppDapperDbContext> options) : DapperDbContext(options)
 {
+    public DapperSet<User> Users => Set<User>();
+    public DapperSet<LogEntry> Logs => Set<LogEntry>();
 
-    // helper metodlar:
-    public Task<IEnumerable<UserDto>> GetActiveUsersAsync()
-          => QueryAsync<UserDto>("SELECT Id, Name FROM Users WHERE IsActive = 1");
+    protected override void OnModelCreating(DapperModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<User>(b =>
+        {
+            b.Property(u => u.Name).HasMaxLength(100).IsRequired();
+        });
+
+        modelBuilder.Entity<LogEntry>(b =>
+        {
+            b.Property(l => l.Message).HasMaxLength(256);
+        });
+    }
 }
-
-public sealed record UserDto(int Id, string Name);
