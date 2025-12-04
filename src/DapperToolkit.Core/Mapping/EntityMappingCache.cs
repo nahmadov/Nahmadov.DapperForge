@@ -33,7 +33,16 @@ internal static class EntityMappingCache<TEntity>
         {
             var colAttr = p.GetCustomAttribute<ColumnAttribute>();
             var genAttr = p.GetCustomAttribute<DatabaseGeneratedAttribute>();
-            return new PropertyMapping(p, colAttr, genAttr);
+            var required = p.GetCustomAttribute<KeyAttribute>() is not null
+                           || p.GetCustomAttribute<RequiredAttribute>() is not null;
+
+            var stringLength = p.GetCustomAttribute<StringLengthAttribute>();
+            var maxLengthAttr = p.GetCustomAttribute<MaxLengthAttribute>();
+            var maxLength = stringLength?.MaximumLength > 0
+                ? stringLength.MaximumLength
+                : maxLengthAttr?.Length > 0 ? maxLengthAttr.Length : (int?)null;
+
+            return new PropertyMapping(p, colAttr, genAttr, false, required, maxLength);
         }).ToList();
 
         var isReadOnly = type.GetCustomAttribute<ReadOnlyEntityAttribute>() is not null;

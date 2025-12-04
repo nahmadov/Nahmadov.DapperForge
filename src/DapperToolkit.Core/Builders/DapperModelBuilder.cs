@@ -129,11 +129,26 @@ public class DapperModelBuilder(ISqlDialect dialect)
                 effectiveColumnAttr = new ColumnAttribute(propConfig.ColumnName);
             }
 
+            var required =
+                (propConfig?.IsRequired ?? false) ||
+                prop.GetCustomAttribute<RequiredAttribute>() is not null;
+
+            int? maxLength = propConfig?.MaxLength;
+            var stringLengthAttr = prop.GetCustomAttribute<StringLengthAttribute>();
+            if (maxLength is null && stringLengthAttr?.MaximumLength > 0)
+                maxLength = stringLengthAttr.MaximumLength;
+
+            var maxLengthAttr = prop.GetCustomAttribute<MaxLengthAttribute>();
+            if (maxLength is null && maxLengthAttr?.Length > 0)
+                maxLength = maxLengthAttr.Length;
+
             var mapping = new PropertyMapping(
                 prop,
                 effectiveColumnAttr,
                 databaseGeneratedAttr,
-                propConfig?.IsReadOnly ?? false);
+                propConfig?.IsReadOnly ?? false,
+                required,
+                maxLength);
 
             propertyMappings.Add(mapping);
         }

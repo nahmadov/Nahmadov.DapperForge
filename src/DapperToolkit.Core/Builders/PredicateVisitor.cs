@@ -7,126 +7,77 @@ using DapperToolkit.Core.Mapping;
 
 namespace DapperToolkit.Core.Builders;
 
-public sealed class PredicateVisitor<TEntity>(EntityMapping mapping, ISqlDialect dialect) : ExpressionVisitor
+public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
     where TEntity : class
 {
-    private readonly StringBuilder _sb = new();
-    private readonly Dictionary<string, object> _parameters = [];
-    private readonly ISqlDialect _dialect = dialect ?? throw new ArgumentNullException(nameof(dialect));
-    private readonly EntityMapping _mapping = mapping ?? throw new ArgumentNullException(nameof(mapping));
-    private int _index = 0;
+    private readonly EntityMapping _mapping;
+    private readonly ISqlDialect _dialect;
+    private readonly Dictionary<PropertyInfo, PropertyMapping> _propertyLookup;
+
+    private readonly StringBuilder _sql = new();
+    private readonly Dictionary<string, object?> _parameters = new();
+    private int _paramIndex;
+
+    public PredicateVisitor(EntityMapping mapping, ISqlDialect dialect)
+    {
+        _mapping = mapping ?? throw new ArgumentNullException(nameof(mapping));
+        _dialect = dialect ?? throw new ArgumentNullException(nameof(dialect));
+        _propertyLookup = _mapping.PropertyMappings.ToDictionary(pm => pm.Property, pm => pm);
+    }
 
     public (string Sql, object Parameters) Translate(Expression<Func<TEntity, bool>> predicate)
     {
-        var body = predicate.Body;
+        ArgumentNullException.ThrowIfNull(predicate);
 
-        // x => x.IsActive  (bare boolean property)
-        if (body is MemberExpression m && IsEntityBooleanMember(m))
+        _sql.Clear();
+        _parameters.Clear();
+        _paramIndex = 0;
+
+        if (!TryHandleBooleanProjection(predicate.Body))
         {
-            var column = GetColumnNameForMember(m);
-            _sb.Append($"{column} = {_dialect.FormatBoolean(true)}");
-        }
-        // x => !x.IsActive
-        else if (body is UnaryExpression u &&
-             u.NodeType == ExpressionType.Not &&
-             u.Operand is MemberExpression m2 &&
-             IsEntityBooleanMember(m2))
-        {
-            var column = GetColumnNameForMember(m2);
-            _sb.Append($"{column} = {_dialect.FormatBoolean(false)}");
-        }
-        else
-        {
-            Visit(body);
+            Visit(predicate.Body);
         }
 
-        var anon = _parameters.ToDictionary(k => k.Key, v => v.Value);
-        return (_sb.ToString(), anon);
+        return (_sql.ToString(), new Dictionary<string, object?>(_parameters));
     }
 
     protected override Expression VisitBinary(BinaryExpression node)
     {
-        // Boolean comparisons
-        if (node.NodeType is ExpressionType.Equal or ExpressionType.NotEqual)
-        {
-            if (IsBooleanComparison(node, out var memberExpr, out var value))
-            {
-                var column = GetColumnNameForMember(memberExpr);
-                var normalized = _dialect.FormatBoolean(value);
-                _sb.Append($"({column} = {normalized})");
-                return node;
-            }
+        if (TryHandleBooleanComparison(node))
+            return node;
 
-            // NULL comparisons
-            if (IsNullConstant(node.Right))
-            {
-                _sb.Append("(");
-                Visit(node.Left);
-                _sb.Append(node.NodeType == ExpressionType.Equal ? " IS NULL)" : " IS NOT NULL)");
-                return node;
-            }
+        if (TryHandleNullComparison(node))
+            return node;
 
-            if (IsNullConstant(node.Left))
-            {
-                _sb.Append("(");
-                Visit(node.Right);
-                _sb.Append(node.NodeType == ExpressionType.Equal ? " IS NULL)" : " IS NOT NULL)");
-                return node;
-            }
-        }
-
-        _sb.Append("(");
+        _sql.Append('(');
         Visit(node.Left);
-
-        _sb.Append(node.NodeType switch
-        {
-            ExpressionType.Equal => " = ",
-            ExpressionType.NotEqual => " <> ",
-            ExpressionType.GreaterThan => " > ",
-            ExpressionType.GreaterThanOrEqual => " >= ",
-            ExpressionType.LessThan => " < ",
-            ExpressionType.LessThanOrEqual => " <= ",
-            ExpressionType.AndAlso => " AND ",
-            ExpressionType.OrElse => " OR ",
-            _ => throw new NotSupportedException($"Unsupported node: {node.NodeType}")
-        });
-
+        _sql.Append(GetSqlOperator(node.NodeType));
         Visit(node.Right);
-        _sb.Append(")");
+        _sql.Append(')');
         return node;
     }
 
     protected override Expression VisitMember(MemberExpression node)
     {
-        // Entity property (x.Prop)
-        if (typeof(TEntity).IsAssignableFrom(node.Expression?.Type ?? typeof(object)))
+        if (PredicateVisitor<TEntity>.IsEntityProperty(node))
         {
-            var prop = node.Member as PropertyInfo
-                       ?? throw new NotSupportedException($"Member '{node.Member.Name}' is not a property.");
-
-            var propMap = _mapping.PropertyMappings
-                .FirstOrDefault(pm => pm.Property == prop)
-                ?? throw new InvalidOperationException($"No mapping found for property '{prop.Name}'.");
-
-            var column = _dialect.QuoteIdentifier(propMap.ColumnName);
-            _sb.Append(column);
+            AppendColumn((PropertyInfo)node.Member);
             return node;
         }
 
-        // Closure captured variable
         if (node.Expression is ConstantExpression closure)
         {
             var value = GetValueFromClosure(closure.Value, node.Member);
 
             if (value is bool b)
             {
-                AppendBooleanPredicateLiteral(b);
+                AppendBooleanLiteral(b);
                 return node;
             }
 
             if (value is null)
             {
-                _sb.Append("NULL");
+                _sql.Append("NULL");
                 return node;
             }
 
@@ -141,13 +92,13 @@ public sealed class PredicateVisitor<TEntity>(EntityMapping mapping, ISqlDialect
     {
         if (node.Value is bool b)
         {
-            AppendBooleanPredicateLiteral(b);
+            AppendBooleanLiteral(b);
             return node;
         }
 
         if (node.Value is null)
         {
-            _sb.Append("NULL");
+            _sql.Append("NULL");
             return node;
         }
 
@@ -161,11 +112,10 @@ public sealed class PredicateVisitor<TEntity>(EntityMapping mapping, ISqlDialect
             node.Object is MemberExpression memberExpr &&
             memberExpr.Expression is ParameterExpression)
         {
-            VisitMember(memberExpr);
-            _sb.Append(" LIKE ");
+            Visit(memberExpr);
+            _sql.Append(" LIKE ");
 
-            var arg = node.Arguments[0];
-            var value = EvaluateExpression(arg);
+            var value = EvaluateExpression(node.Arguments[0]);
             AppendParameter($"%{value}%");
             return node;
         }
@@ -177,34 +127,118 @@ public sealed class PredicateVisitor<TEntity>(EntityMapping mapping, ISqlDialect
     {
         if (node.NodeType == ExpressionType.Not)
         {
-            _sb.Append("NOT (");
+            _sql.Append("NOT (");
             Visit(node.Operand);
-            _sb.Append(")");
+            _sql.Append(')');
             return node;
         }
 
         return base.VisitUnary(node);
     }
 
-    private void AppendBooleanPredicateLiteral(bool value)
+    private bool TryHandleBooleanProjection(Expression body)
     {
-        // Universal SQL safe literal: TRUE → 1=1, FALSE → 1=0
-        _sb.Append(value ? "1=1" : "1=0");
+        if (body is MemberExpression member && IsEntityBooleanMember(member))
+        {
+            AppendBooleanComparison(member, true);
+            return true;
+        }
+
+        if (body is UnaryExpression { NodeType: ExpressionType.Not, Operand: MemberExpression neg } &&
+            IsEntityBooleanMember(neg))
+        {
+            AppendBooleanComparison(neg, false);
+            return true;
+        }
+
+        return false;
+    }
+
+    private bool TryHandleBooleanComparison(BinaryExpression node)
+    {
+        if (node.NodeType is not (ExpressionType.Equal or ExpressionType.NotEqual))
+            return false;
+
+        if (!IsBooleanComparison(node, out var memberExpr, out var value))
+            return false;
+
+        var column = GetColumnNameForMember(memberExpr);
+        _sql.Append($"({column} = {_dialect.FormatBoolean(value)})");
+        return true;
+    }
+
+    private bool TryHandleNullComparison(BinaryExpression node)
+    {
+        if (node.NodeType is not (ExpressionType.Equal or ExpressionType.NotEqual))
+            return false;
+
+        if (IsNullConstant(node.Right))
+        {
+            AppendNullComparison(node.Left, node.NodeType == ExpressionType.Equal);
+            return true;
+        }
+
+        if (IsNullConstant(node.Left))
+        {
+            AppendNullComparison(node.Right, node.NodeType == ExpressionType.Equal);
+            return true;
+        }
+
+        return false;
+    }
+
+    private void AppendNullComparison(Expression expr, bool isEqual)
+    {
+        _sql.Append('(');
+        Visit(expr);
+        _sql.Append(isEqual ? " IS NULL)" : " IS NOT NULL)");
+    }
+
+    private void AppendBooleanComparison(MemberExpression member, bool value)
+    {
+        var column = GetColumnNameForMember(member);
+        _sql.Append($"{column} = {_dialect.FormatBoolean(value)}");
+    }
+
+    private void AppendColumn(PropertyInfo property)
+    {
+        if (!_propertyLookup.TryGetValue(property, out var map))
+            throw new InvalidOperationException($"No mapping found for property '{property.Name}'.");
+
+        _sql.Append(_dialect.QuoteIdentifier(map.ColumnName));
+    }
+
+    private static string GetSqlOperator(ExpressionType nodeType) => nodeType switch
+    {
+        ExpressionType.Equal => " = ",
+        ExpressionType.NotEqual => " <> ",
+        ExpressionType.GreaterThan => " > ",
+        ExpressionType.GreaterThanOrEqual => " >= ",
+        ExpressionType.LessThan => " < ",
+        ExpressionType.LessThanOrEqual => " <= ",
+        ExpressionType.AndAlso => " AND ",
+        ExpressionType.OrElse => " OR ",
+        _ => throw new NotSupportedException($"Unsupported node: {nodeType}")
+    };
+
+    private void AppendBooleanLiteral(bool value)
+    {
+        _sql.Append(value ? "1=1" : "1=0");
     }
 
     private bool IsBooleanComparison(BinaryExpression node, out MemberExpression member, out bool value)
     {
-        if (node.Left is MemberExpression ml && IsEntityBooleanMember(ml) &&
-            TryEvalToBool(node.Right, out value))
+        if (node.Left is MemberExpression left && IsEntityBooleanMember(left) &&
+            PredicateVisitor<TEntity>.TryEvalToBool(node.Right, out value))
         {
-            member = ml;
+            member = left;
             return true;
         }
 
-        if (node.Right is MemberExpression mr && IsEntityBooleanMember(mr) &&
-            TryEvalToBool(node.Left, out value))
+        if (node.Right is MemberExpression right && IsEntityBooleanMember(right) &&
+            PredicateVisitor<TEntity>.TryEvalToBool(node.Left, out value))
         {
-            member = mr;
+            member = right;
             return true;
         }
 
@@ -213,7 +247,7 @@ public sealed class PredicateVisitor<TEntity>(EntityMapping mapping, ISqlDialect
         return false;
     }
 
-    private bool TryEvalToBool(Expression expr, out bool value)
+    private static bool TryEvalToBool(Expression expr, out bool value)
     {
         var v = EvaluateExpression(expr);
         if (v is bool b)
@@ -228,63 +262,66 @@ public sealed class PredicateVisitor<TEntity>(EntityMapping mapping, ISqlDialect
 
     private bool IsEntityBooleanMember(MemberExpression node)
     {
-        if (!typeof(TEntity).IsAssignableFrom(node.Expression?.Type ?? typeof(object)))
+        if (!PredicateVisitor<TEntity>.IsEntityProperty(node))
             return false;
 
-        if (node.Member is not PropertyInfo pi) return false;
+        var propertyType = ((PropertyInfo)node.Member).PropertyType;
+        var underlying = Nullable.GetUnderlyingType(propertyType) ?? propertyType;
+        return underlying == typeof(bool);
+    }
 
-        var t = Nullable.GetUnderlyingType(pi.PropertyType) ?? pi.PropertyType;
-        return t == typeof(bool);
+    private static bool IsEntityProperty(MemberExpression node)
+    {
+        return typeof(TEntity).IsAssignableFrom(node.Expression?.Type ?? typeof(object)) &&
+               node.Member is PropertyInfo;
     }
 
     private string GetColumnNameForMember(MemberExpression node)
     {
         var prop = (PropertyInfo)node.Member;
-        var map = _mapping.PropertyMappings.First(pm => pm.Property == prop);
-        return _dialect.QuoteIdentifier(map.ColumnName);
+        if (_propertyLookup.TryGetValue(prop, out var map))
+            return _dialect.QuoteIdentifier(map.ColumnName);
+
+        throw new InvalidOperationException($"No mapping found for property '{prop.Name}'.");
     }
 
     private static bool IsNullConstant(Expression expr)
     {
-        if (expr is ConstantExpression c)
-            return c.Value is null;
+        if (expr is ConstantExpression constant)
+            return constant.Value is null;
 
-        if (expr is MemberExpression m && m.Expression is ConstantExpression closure)
+        if (expr is MemberExpression member && member.Expression is ConstantExpression closure)
         {
-            var value = GetValueFromClosure(closure.Value, m.Member);
+            var value = GetValueFromClosure(closure.Value, member.Member);
             return value is null;
         }
 
-        var evaluated = EvaluateExpression(expr);
-        return evaluated is null;
+        return EvaluateExpression(expr) is null;
     }
 
     private void AppendParameter(object? value)
     {
-        var paramKey = $"p{_index++}";
+        var paramKey = $"p{_paramIndex++}";
         _parameters[paramKey] = value ?? DBNull.Value;
-
-        var sqlParamName = _dialect.FormatParameter(paramKey);
-        _sb.Append(sqlParamName);
+        _sql.Append(_dialect.FormatParameter(paramKey));
     }
 
     private static object? GetValueFromClosure(object? closureObject, MemberInfo member)
     {
-        if (closureObject is null)
-            return null;
-
-        return member switch
-        {
-            FieldInfo fi => fi.GetValue(closureObject),
-            PropertyInfo pi => pi.GetValue(closureObject),
-            _ => throw new NotSupportedException($"Unsupported closure member type: {member.MemberType}")
-        };
+        return closureObject is null
+            ? null
+            : member switch
+            {
+                FieldInfo fi => fi.GetValue(closureObject),
+                PropertyInfo pi => pi.GetValue(closureObject),
+                _ => throw new NotSupportedException($"Unsupported closure member type: {member.MemberType}")
+            };
     }
 
     private static object? EvaluateExpression(Expression expr)
     {
-        if (expr is ConstantExpression c)
-            return c.Value;
+        if (expr is ConstantExpression constant)
+            return constant.Value;
 
         var lambda = Expression.Lambda(expr);
         var compiled = lambda.Compile();

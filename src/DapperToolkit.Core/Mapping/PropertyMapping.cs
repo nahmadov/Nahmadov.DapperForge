@@ -7,12 +7,16 @@ public sealed class PropertyMapping(
     PropertyInfo prop,
     ColumnAttribute? colAttr,
     DatabaseGeneratedAttribute? genAttr,
-    bool isReadOnly = false)
+    bool isReadOnly = false,
+    bool isRequired = false,
+    int? maxLength = null)
 {
     public PropertyInfo Property { get; } = prop ?? throw new ArgumentNullException(nameof(prop));
     public string ColumnName { get; } = colAttr?.Name ?? prop.Name;
     public DatabaseGeneratedOption? GeneratedOption { get; } = genAttr?.DatabaseGeneratedOption;
     public bool IsReadOnly { get; } = isReadOnly;
+    public bool IsRequired { get; } = isRequired;
+    public int? MaxLength { get; } = maxLength;
 
     public bool IsIdentity => GeneratedOption == DatabaseGeneratedOption.Identity;
     public bool IsComputed => GeneratedOption == DatabaseGeneratedOption.Computed;

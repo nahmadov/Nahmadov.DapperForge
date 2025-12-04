@@ -17,8 +17,6 @@ internal static class EntityValidator<TEntity> where TEntity : class
         ArgumentNullException.ThrowIfNull(entity);
         ArgumentNullException.ThrowIfNull(mapping);
 
-        // Read-only entity-ləri ümumiyyətlə buraya salmamaq da olar,
-        // amma salınıbsa belə: insert/update onsuz da qadağandır.
         if (mapping.IsReadOnly)
         {
             throw new InvalidOperationException(
@@ -26,39 +24,43 @@ internal static class EntityValidator<TEntity> where TEntity : class
         }
 
         var errors = new List<string>();
+        var metaLookup = EntityValidationMetadata<TEntity>.Properties
+            .ToDictionary(m => m.Property, m => m);
 
-        foreach (var meta in EntityValidationMetadata<TEntity>.Properties)
+        foreach (var propMap in mapping.PropertyMappings)
         {
-            var prop = meta.Property;
+            var prop = propMap.Property;
             var value = prop.GetValue(entity);
 
-            // 1) [Required]
-            if (meta.Required is not null)
+            metaLookup.TryGetValue(prop, out var meta);
+
+            var required = propMap.IsRequired || meta?.Required is not null;
+            var stringLengthAttr = meta?.StringLength;
+            var maxLength = propMap.MaxLength ??
+                            (stringLengthAttr?.MaximumLength > 0 ? stringLengthAttr.MaximumLength : (int?)null);
+            var minLength = stringLengthAttr?.MinimumLength > 0 ? stringLengthAttr.MinimumLength : (int?)null;
+
+            if (required)
             {
                 if (value is null)
                 {
                     errors.Add($"Property '{prop.Name}' is required.");
+                    continue;
                 }
-                else if (value is string s && string.IsNullOrWhiteSpace(s))
+                if (value is string s && string.IsNullOrWhiteSpace(s))
                 {
                     errors.Add($"Property '{prop.Name}' is required and cannot be empty.");
+                    continue;
                 }
             }
 
-            // 2) [StringLength]
-            if (meta.StringLength is not null && value is string str)
+            if (value is string str)
             {
-                var attr = meta.StringLength;
+                if (maxLength is not null && str.Length > maxLength.Value)
+                    errors.Add($"Property '{prop.Name}' exceeds maximum length of {maxLength.Value}.");
 
-                if (attr.MaximumLength > 0 && str.Length > attr.MaximumLength)
-                {
-                    errors.Add($"Property '{prop.Name}' exceeds maximum length of {attr.MaximumLength}.");
-                }
-
-                if (attr.MinimumLength > 0 && str.Length < attr.MinimumLength)
-                {
-                    errors.Add($"Property '{prop.Name}' is shorter than minimum length of {attr.MinimumLength}.");
-                }
+                if (minLength is not null && str.Length < minLength.Value)
+                    errors.Add($"Property '{prop.Name}' is shorter than minimum length of {minLength.Value}.");
             }
         }
 
@@ -68,7 +70,6 @@ internal static class EntityValidator<TEntity> where TEntity : class
                 $"Validation failed for entity '{typeof(TEntity).Name}':{Environment.NewLine} - " +
                 string.Join(Environment.NewLine + " - ", errors);
 
-            // istəsən burada ValidationException at:
             throw new ValidationException(message);
         }
     }
