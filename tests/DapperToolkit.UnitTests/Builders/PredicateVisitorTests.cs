@@ -52,6 +52,32 @@ public class PredicateVisitorTests
     }
 
     [Fact]
+    public void Translates_StartsWith_And_EndsWith()
+    {
+        var (startsSql, startsParams) = Translate(u => u.Name.StartsWith("abc"));
+        Assert.Equal("[username] LIKE @p0 ESCAPE '\\\\'", startsSql);
+        var startsDict = Assert.IsType<Dictionary<string, object>>(startsParams);
+        Assert.Equal("abc%", startsDict["p0"]);
+
+        var (endsSql, endsParams) = Translate(u => u.Name.EndsWith("xyz"));
+        Assert.Equal("[username] LIKE @p0 ESCAPE '\\\\'", endsSql);
+        var endsDict = Assert.IsType<Dictionary<string, object>>(endsParams);
+        Assert.Equal("%xyz", endsDict["p0"]);
+    }
+
+    [Fact]
+    public void CaseInsensitive_Like_Uses_Lower()
+    {
+        var mapping = EntityMappingCache<UserEntity>.Mapping;
+        var visitor = new PredicateVisitor<UserEntity>(mapping, SqlServerDialect.Instance);
+
+        var (sql, parameters) = visitor.Translate(u => u.Name.Contains("ABC"), ignoreCase: true);
+        Assert.Equal("LOWER([username]) LIKE LOWER(@p0) ESCAPE '\\\\'", sql);
+        var dict = Assert.IsType<Dictionary<string, object>>(parameters);
+        Assert.Equal("%ABC%", dict["p0"]);
+    }
+
+    [Fact]
     public void Translates_Comparison_With_Closure_Value()
     {
         var threshold = 10;
