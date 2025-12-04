@@ -123,14 +123,17 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
 
     private void InitializeMappingsFromAttributes(DapperModelBuilder builder)
     {
-        var entityTypes = GetType()
+        var entityTypes = new HashSet<Type>();
+
+        var dbSetTypes = GetType()
             .GetProperties(BindingFlags.Instance | BindingFlags.Public)
             .Where(p =>
                 p.PropertyType.IsGenericType &&
                 p.PropertyType.GetGenericTypeDefinition() == typeof(DapperSet<>))
-            .Select(p => p.PropertyType.GetGenericArguments()[0])
-            .Distinct()
-            .ToList();
+            .Select(p => p.PropertyType.GetGenericArguments()[0]);
+
+        foreach (var t in dbSetTypes)
+            entityTypes.Add(t);
 
         foreach (var entityType in entityTypes)
         {
@@ -144,7 +147,7 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
             .GetMethod(nameof(ApplyAttributeMappingGeneric), BindingFlags.NonPublic | BindingFlags.Static)!
             .MakeGenericMethod(entityType);
 
-        method.Invoke(null, new object[] { builder });
+        method.Invoke(null, [builder]);
     }
 
     private static void ApplyAttributeMappingGeneric<TEntity>(DapperModelBuilder builder)
