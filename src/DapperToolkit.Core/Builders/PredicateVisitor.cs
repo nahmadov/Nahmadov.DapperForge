@@ -17,6 +17,7 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
     private readonly StringBuilder _sql = new();
     private readonly Dictionary<string, object?> _parameters = new();
     private int _paramIndex;
+    private bool _ignoreCase;
 
     public PredicateVisitor(EntityMapping mapping, ISqlDialect dialect)
     {
@@ -25,13 +26,14 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
         _propertyLookup = _mapping.PropertyMappings.ToDictionary(pm => pm.Property, pm => pm);
     }
 
-    public (string Sql, object Parameters) Translate(Expression<Func<TEntity, bool>> predicate)
+    public (string Sql, object Parameters) Translate(Expression<Func<TEntity, bool>> predicate, bool ignoreCase = false)
     {
         ArgumentNullException.ThrowIfNull(predicate);
 
         _sql.Clear();
         _parameters.Clear();
         _paramIndex = 0;
+        _ignoreCase = ignoreCase;
 
         if (!TryHandleBooleanProjection(predicate.Body))
         {
@@ -113,6 +115,22 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
             memberExpr.Expression is ParameterExpression)
         {
             AppendLikeContains(memberExpr, node.Arguments[0]);
+            return node;
+        }
+
+        if (node.Method.Name == nameof(string.StartsWith) &&
+            node.Object is MemberExpression startsExpr &&
+            startsExpr.Expression is ParameterExpression)
+        {
+            AppendLikeStartsWith(startsExpr, node.Arguments[0]);
+            return node;
+        }
+
+        if (node.Method.Name == nameof(string.EndsWith) &&
+            node.Object is MemberExpression endsExpr &&
+            endsExpr.Expression is ParameterExpression)
+        {
+            AppendLikeEndsWith(endsExpr, node.Arguments[0]);
             return node;
         }
 
@@ -283,13 +301,41 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
 
     private void AppendLikeContains(MemberExpression memberExpr, Expression argument)
     {
-        Visit(memberExpr);
-        _sql.Append(" LIKE ");
-
+        var column = GetColumnNameForMember(memberExpr);
         var raw = EvaluateExpression(argument);
         var escaped = EscapeLikeValue(raw?.ToString() ?? string.Empty);
-        AppendParameter($"%{escaped}%");
-        _sql.Append(" ESCAPE '\\\\'");
+        var paramSql = AddParameter($"%{escaped}%");
+
+        var left = _ignoreCase ? $"LOWER({column})" : column;
+        var right = _ignoreCase ? $"LOWER({paramSql})" : paramSql;
+
+        _sql.Append($"{left} LIKE {right} ESCAPE '\\\\'");
+    }
+
+    private void AppendLikeStartsWith(MemberExpression memberExpr, Expression argument)
+    {
+        var column = GetColumnNameForMember(memberExpr);
+        var raw = EvaluateExpression(argument);
+        var escaped = EscapeLikeValue(raw?.ToString() ?? string.Empty);
+        var paramSql = AddParameter($"{escaped}%");
+
+        var left = _ignoreCase ? $"LOWER({column})" : column;
+        var right = _ignoreCase ? $"LOWER({paramSql})" : paramSql;
+
+        _sql.Append($"{left} LIKE {right} ESCAPE '\\\\'");
+    }
+
+    private void AppendLikeEndsWith(MemberExpression memberExpr, Expression argument)
+    {
+        var column = GetColumnNameForMember(memberExpr);
+        var raw = EvaluateExpression(argument);
+        var escaped = EscapeLikeValue(raw?.ToString() ?? string.Empty);
+        var paramSql = AddParameter($"%{escaped}");
+
+        var left = _ignoreCase ? $"LOWER({column})" : column;
+        var right = _ignoreCase ? $"LOWER({paramSql})" : paramSql;
+
+        _sql.Append($"{left} LIKE {right} ESCAPE '\\\\'");
     }
 
     private static string EscapeLikeValue(string value)
@@ -316,9 +362,15 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
 
     private void AppendParameter(object? value)
     {
+        var paramSql = AddParameter(value);
+        _sql.Append(paramSql);
+    }
+
+    private string AddParameter(object? value)
+    {
         var paramKey = $"p{_paramIndex++}";
         _parameters[paramKey] = value ?? DBNull.Value;
-        _sql.Append(_dialect.FormatParameter(paramKey));
+        return _dialect.FormatParameter(paramKey);
     }
 
     private static object? GetValueFromClosure(object? closureObject, MemberInfo member)

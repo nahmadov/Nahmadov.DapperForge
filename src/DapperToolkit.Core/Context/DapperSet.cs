@@ -48,21 +48,21 @@ public sealed class DapperSet<TEntity> where TEntity : class
         return _context.QueryFirstOrDefaultAsync<TEntity>(_generator.SelectByIdSql, param);
     }
 
-    public Task<IEnumerable<TEntity>> WhereAsync(Expression<Func<TEntity, bool>> predicate)
+    public Task<IEnumerable<TEntity>> WhereAsync(Expression<Func<TEntity, bool>> predicate, bool ignoreCase = false)
     {
         var dialect = _generator.Dialect;
         var visitor = new PredicateVisitor<TEntity>(_mapping, dialect);
-        var (sql, parameters) = visitor.Translate(predicate);
+        var (sql, parameters) = visitor.Translate(predicate, ignoreCase);
 
         var finalSql = $"{_generator.SelectAllSql} WHERE {sql}";
         return _context.QueryAsync<TEntity>(finalSql, parameters);
     }
 
-    public Task<TEntity?> FirstOrDefaultAsync(Expression<Func<TEntity, bool>> predicate)
+    public Task<TEntity?> FirstOrDefaultAsync(Expression<Func<TEntity, bool>> predicate, bool ignoreCase = false)
     {
         var dialect = _generator.Dialect;
         var visitor = new PredicateVisitor<TEntity>(_mapping, dialect);
-        var (sql, parameters) = visitor.Translate(predicate);
+        var (sql, parameters) = visitor.Translate(predicate, ignoreCase);
 
         var finalSql = $"{_generator.SelectAllSql} WHERE {sql}";
         return _context.QueryFirstOrDefaultAsync<TEntity>(finalSql, parameters);
