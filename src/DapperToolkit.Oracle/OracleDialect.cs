@@ -12,12 +12,20 @@ public class OracleDialect : ISqlDialect
 
     public string QuoteIdentifier(string identifier) => $"\"{identifier}\"";
 
-    public string BuildInsertReturningId(string baseInsertSql, string tableName, string keyColumnName)
+    public string BuildInsertReturningId(string baseInsertSql, string tableName, params string[] keyColumnNames)
     {
-        if (string.IsNullOrWhiteSpace(keyColumnName))
-            throw new ArgumentNullException(nameof(keyColumnName));
+        if (keyColumnNames is null || keyColumnNames.Length == 0)
+            throw new ArgumentNullException(nameof(keyColumnNames));
 
-        return $"{baseInsertSql} RETURNING {QuoteIdentifier(keyColumnName)} INTO {FormatParameter(keyColumnName)}";
+        if (keyColumnNames.Length == 1)
+        {
+            var key = keyColumnNames[0];
+            return $"{baseInsertSql} RETURNING {QuoteIdentifier(key)} INTO {FormatParameter(key)}";
+        }
+
+        var returning = string.Join(", ", keyColumnNames.Select(QuoteIdentifier));
+        var into = string.Join(", ", keyColumnNames.Select(FormatParameter));
+        return $"{baseInsertSql} RETURNING {returning} INTO {into}";
     }
 
     public string FormatBoolean(bool value) => value ? "1" : "0";

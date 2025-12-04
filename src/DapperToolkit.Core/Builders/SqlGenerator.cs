@@ -122,12 +122,12 @@ internal sealed class SqlGenerator<TEntity> where TEntity : class
 
     private string? BuildInsertReturningIdSql(string insertSql)
     {
-        if (_keyColumns.Length != 1)
+        if (_keyColumns.Length == 0)
             return null;
 
         try
         {
-            return _dialect.BuildInsertReturningId(insertSql, _fullTableName, _keyColumns.First());
+            return _dialect.BuildInsertReturningId(insertSql, _fullTableName, _keyColumns);
         }
         catch (NotSupportedException)
         {

@@ -12,8 +12,14 @@ public class SqlServerDialect : ISqlDialect
 
     public string QuoteIdentifier(string identifier) => $"[{identifier}]";
 
-    public string BuildInsertReturningId(string baseInsertSql, string tableName, string keyColumnName)
-        => $"{baseInsertSql}; SELECT CAST(SCOPE_IDENTITY() AS int) AS {QuoteIdentifier(keyColumnName)};";
+    public string BuildInsertReturningId(string baseInsertSql, string tableName, params string[] keyColumnNames)
+    {
+        if (keyColumnNames is null || keyColumnNames.Length == 0)
+            throw new ArgumentNullException(nameof(keyColumnNames));
+
+        var key = keyColumnNames[0];
+        return $"{baseInsertSql}; SELECT CAST(SCOPE_IDENTITY() AS int) AS {QuoteIdentifier(key)};";
+    }
 
     public string FormatBoolean(bool value) => value ? "1" : "0";
 }
