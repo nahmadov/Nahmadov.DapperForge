@@ -227,7 +227,17 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
             throw new InvalidOperationException($"No mapping found for property '{property.Name}'.");
 
         var column = _dialect.QuoteIdentifier(map.ColumnName);
-        _sql.Append(column);
+        var propType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+
+        // Bare boolean members in predicates should translate to column = TRUE
+        if (propType == typeof(bool))
+        {
+            _sql.Append($"{column} = {_dialect.FormatBoolean(true)}");
+        }
+        else
+        {
+            _sql.Append(column);
+        }
     }
 
     private static string GetSqlOperator(ExpressionType nodeType) => nodeType switch
@@ -408,13 +418,14 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
         if (expr is ConstantExpression constant)
             return IsNullLike(constant.Value);
 
-        if (expr is MemberExpression member && member.Expression is ConstantExpression closure)
+        if (expr is MemberExpression { Expression: ConstantExpression closure } member)
         {
             var value = GetValueFromClosure(closure.Value, member.Member);
             return IsNullLike(value);
         }
 
-        return IsNullLike(EvaluateExpression(expr));
+        // Non-constant expressions (e.g., entity members) are never treated as null-like here.
+        return false;
     }
 
     private bool IsNullLike(object? value)

@@ -72,12 +72,13 @@ public class SqlGeneratorTests
     }
 
     [Fact]
-    public void InsertReturningId_IsNullForOracle()
+    public void InsertReturningId_IsGeneratedForOracle()
     {
         var mapping = BuildMapping();
         var generator = new SqlGenerator<UserEntity>(OracleDialect.Instance, mapping);
 
-        Assert.Null(generator.InsertReturningIdSql);
+        Assert.NotNull(generator.InsertReturningIdSql);
+        Assert.Contains("RETURNING", generator.InsertReturningIdSql, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

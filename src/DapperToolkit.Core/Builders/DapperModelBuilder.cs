@@ -98,11 +98,14 @@ public class DapperModelBuilder(ISqlDialect dialect, string? defaultSchema = nul
         var tableAttr = type.GetCustomAttribute<TableAttribute>();
         var readOnlyAttr = type.GetCustomAttribute<ReadOnlyEntityAttribute>();
 
-        var tableName = string.IsNullOrWhiteSpace(config.TableName)
-            ? tableAttr?.Name ?? type.Name
-            : config.TableName;
+        // Priority: explicit fluent config -> attributes -> DbSet property convention/CLR name
+        var tableName = !string.IsNullOrWhiteSpace(config.TableName)
+            ? config.TableName
+            : tableAttr?.Name ?? type.Name;
 
-        var schema = config.Schema ?? tableAttr?.Schema ?? _defaultSchema;
+        var schema = !string.IsNullOrWhiteSpace(config.Schema)
+            ? config.Schema
+            : tableAttr?.Schema ?? _defaultSchema;
         var props = type.GetProperties(BindingFlags.Instance | BindingFlags.Public)
             .Where(p =>
                 p.CanRead &&

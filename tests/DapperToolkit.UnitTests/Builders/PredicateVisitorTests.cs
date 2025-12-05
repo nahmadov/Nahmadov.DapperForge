@@ -36,7 +36,7 @@ public class PredicateVisitorTests
     {
         var (sql, parameters) = Translate(u => u.Name.Contains("abc"));
 
-        Assert.Equal("[username] LIKE @p0 ESCAPE '\\\\'", sql);
+        Assert.Equal("[username] LIKE @p0 ESCAPE '\\'", sql);
         Assert.Single(parameters);
         Assert.Equal("%abc%", parameters["p0"]);
     }
@@ -46,7 +46,7 @@ public class PredicateVisitorTests
     {
         var (sql, parameters) = Translate(u => u.Name.Contains("a%b_c"));
 
-        Assert.Equal("[username] LIKE @p0 ESCAPE '\\\\'", sql);
+        Assert.Equal("[username] LIKE @p0 ESCAPE '\\'", sql);
         Assert.Single(parameters);
         Assert.Equal("%a\\%b\\_c%", parameters["p0"]);
     }
@@ -55,12 +55,12 @@ public class PredicateVisitorTests
     public void Translates_StartsWith_And_EndsWith()
     {
         var (startsSql, startsParams) = Translate(u => u.Name.StartsWith("abc"));
-        Assert.Equal("[username] LIKE @p0 ESCAPE '\\\\'", startsSql);
+        Assert.Equal("[username] LIKE @p0 ESCAPE '\\'", startsSql);
         var startsDict = Assert.IsType<Dictionary<string, object>>(startsParams);
         Assert.Equal("abc%", startsDict["p0"]);
 
         var (endsSql, endsParams) = Translate(u => u.Name.EndsWith("xyz"));
-        Assert.Equal("[username] LIKE @p0 ESCAPE '\\\\'", endsSql);
+        Assert.Equal("[username] LIKE @p0 ESCAPE '\\'", endsSql);
         var endsDict = Assert.IsType<Dictionary<string, object>>(endsParams);
         Assert.Equal("%xyz", endsDict["p0"]);
     }
@@ -72,14 +72,14 @@ public class PredicateVisitorTests
         var visitor = new PredicateVisitor<UserEntity>(mapping, SqlServerDialect.Instance);
 
         var (startsSql, startsParams) = visitor.Translate(u => u.Name.StartsWith("Ab"), ignoreCase: true);
-        Assert.Equal("LOWER([username]) LIKE LOWER(@p0) ESCAPE '\\\\'", startsSql);
+        Assert.Equal("LOWER([username]) LIKE @p0 ESCAPE '\\'", startsSql);
         var startsDict = Assert.IsType<Dictionary<string, object>>(startsParams);
-        Assert.Equal("Ab%", startsDict["p0"]);
+        Assert.Equal("ab%", startsDict["p0"]);
 
         var (endsSql, endsParams) = visitor.Translate(u => u.Name.EndsWith("Cd"), ignoreCase: true);
-        Assert.Equal("LOWER([username]) LIKE LOWER(@p0) ESCAPE '\\\\'", endsSql);
+        Assert.Equal("LOWER([username]) LIKE @p0 ESCAPE '\\'", endsSql);
         var endsDict = Assert.IsType<Dictionary<string, object>>(endsParams);
-        Assert.Equal("%Cd", endsDict["p0"]);
+        Assert.Equal("%cd", endsDict["p0"]);
     }
 
     [Fact]
@@ -89,9 +89,22 @@ public class PredicateVisitorTests
         var visitor = new PredicateVisitor<UserEntity>(mapping, SqlServerDialect.Instance);
 
         var (sql, parameters) = visitor.Translate(u => u.Name.Contains("ABC"), ignoreCase: true);
-        Assert.Equal("LOWER([username]) LIKE LOWER(@p0) ESCAPE '\\\\'", sql);
+        Assert.Equal("LOWER([username]) LIKE @p0 ESCAPE '\\'", sql);
         var dict = Assert.IsType<Dictionary<string, object>>(parameters);
-        Assert.Equal("%ABC%", dict["p0"]);
+        Assert.Equal("%abc%", dict["p0"]);
+    }
+
+    [Fact]
+    public void CaseInsensitive_Like_With_Boolean_Combines_Correctly()
+    {
+        var mapping = EntityMappingCache<UserEntity>.Mapping;
+        var visitor = new PredicateVisitor<UserEntity>(mapping, SqlServerDialect.Instance);
+
+        var (sql, parameters) = visitor.Translate(u => u.Name.StartsWith("Ab") && u.IsActive, ignoreCase: true);
+
+        Assert.Equal("(LOWER([username]) LIKE @p0 ESCAPE '\\' AND [IsActive] = 1)", sql);
+        var dict = Assert.IsType<Dictionary<string, object>>(parameters);
+        Assert.Equal("ab%", dict["p0"]);
     }
 
     [Fact]
@@ -133,7 +146,7 @@ public class PredicateVisitorTests
 
         var (sql, parameters) = visitor.Translate(u => u.Name.Contains("a%b"));
 
-        Assert.Equal("\"username\" LIKE :p0 ESCAPE '\\\\'", sql);
+        Assert.Equal("LOWER(\"username\") LIKE :p0 ESCAPE '\\'", sql);
         var dict = Assert.IsType<Dictionary<string, object>>(parameters);
         Assert.Single(dict);
         Assert.Equal("%a\\%b%", dict["p0"]);

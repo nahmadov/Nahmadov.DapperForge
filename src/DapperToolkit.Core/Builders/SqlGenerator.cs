@@ -139,9 +139,8 @@ internal sealed class SqlGenerator<TEntity> where TEntity : class
     {
         if (_updatableProperties.Length == 0)
         {
-            throw new InvalidOperationException(
-                $"Entity '{typeof(TEntity).Name}' has no updatable columns. " +
-                "All properties are marked as DatabaseGenerated, Computed, or NotMapped.");
+            // No updatable columns; skip generating update SQL so UpdateAsync will surface a clear error.
+            return string.Empty;
         }
 
         var setClause = string.Join(
