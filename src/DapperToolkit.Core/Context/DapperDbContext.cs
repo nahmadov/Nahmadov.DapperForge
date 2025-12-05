@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.ComponentModel.DataAnnotations.Schema;
 using System.Data;
 using System.Linq.Expressions;
 using System.Reflection;
@@ -159,7 +160,11 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
         var mapping = EntityMappingCache<TEntity>.Mapping;
         var entityBuilder = builder.Entity<TEntity>();
 
-        entityBuilder.ToTable(mapping.TableName, mapping.Schema);
+        var tableAttr = typeof(TEntity).GetCustomAttribute<TableAttribute>();
+        if (tableAttr is not null || !string.IsNullOrWhiteSpace(mapping.Schema))
+        {
+            entityBuilder.ToTable(mapping.TableName, mapping.Schema);
+        }
 
         if (mapping.KeyProperties.Count == 0)
         {
@@ -219,7 +224,7 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
             {
                 if (string.IsNullOrWhiteSpace(b.TableName))
                 {
-                    b.ToTable(prop.Name);
+                    b.ToTable(prop.Name, builder.DefaultSchema);
                 }
             });
         }
