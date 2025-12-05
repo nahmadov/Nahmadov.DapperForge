@@ -59,18 +59,21 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
 
     public Task<IEnumerable<T>> QueryAsync<T>(string sql, object? param = null, IDbTransaction? transaction = null)
     {
+        LogSql(sql);
         var connection = transaction?.Connection ?? Connection;
         return connection.QueryAsync<T>(sql, param, transaction);
     }
 
     public Task<T?> QueryFirstOrDefaultAsync<T>(string sql, object? param = null, IDbTransaction? transaction = null)
     {
+        LogSql(sql);
         var connection = transaction?.Connection ?? Connection;
         return connection.QueryFirstOrDefaultAsync<T>(sql, param, transaction);
     }
 
     public Task<int> ExecuteAsync(string sql, object? param = null, IDbTransaction? transaction = null)
     {
+        LogSql(sql);
         var connection = transaction?.Connection ?? Connection;
         return connection.ExecuteAsync(sql, param, transaction);
     }
@@ -251,5 +254,12 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
         }
 
         _disposed = true;
+    }
+
+    private static void LogSql(string sql)
+    {
+        if (string.IsNullOrWhiteSpace(sql))
+            return;
+        Console.WriteLine($"[DapperToolkit SQL] {sql}");
     }
 }

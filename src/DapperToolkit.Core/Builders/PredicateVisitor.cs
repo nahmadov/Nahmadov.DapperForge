@@ -226,7 +226,8 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
         if (!_propertyLookup.TryGetValue(property, out var map))
             throw new InvalidOperationException($"No mapping found for property '{property.Name}'.");
 
-        _sql.Append(_dialect.QuoteIdentifier(map.ColumnName));
+        var column = _dialect.QuoteIdentifier(map.ColumnName);
+        _sql.Append(column);
     }
 
     private static string GetSqlOperator(ExpressionType nodeType) => nodeType switch
@@ -279,8 +280,9 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
             return true;
         }
 
-        var paramSql = AddParameter(value);
-        var right = _ignoreCase ? $"LOWER({paramSql})" : paramSql;
+        var normalized = NormalizeForCase(value);
+        var paramSql = AddParameter(normalized);
+        var right = paramSql;
         var op = node.NodeType == ExpressionType.Equal ? "=" : "<>";
         _sql.Append($"({left} {op} {right})");
         return true;
@@ -356,12 +358,13 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
         var column = GetColumnNameForMember(memberExpr);
         var raw = EvaluateExpression(argument);
         var escaped = EscapeLikeValue(raw?.ToString() ?? string.Empty);
-        var paramSql = AddParameter($"%{escaped}%");
+        var normalized = NormalizeForCase($"%{escaped}%");
+        var paramSql = AddParameter(normalized);
 
         var left = _ignoreCase ? $"LOWER({column})" : column;
-        var right = _ignoreCase ? $"LOWER({paramSql})" : paramSql;
+        var right = paramSql;
 
-        _sql.Append($"{left} LIKE {right} ESCAPE '\\\\'");
+        _sql.Append($"{left} LIKE {right} ESCAPE '\\'");
     }
 
     private void AppendLikeStartsWith(MemberExpression memberExpr, Expression argument)
@@ -369,12 +372,13 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
         var column = GetColumnNameForMember(memberExpr);
         var raw = EvaluateExpression(argument);
         var escaped = EscapeLikeValue(raw?.ToString() ?? string.Empty);
-        var paramSql = AddParameter($"{escaped}%");
+        var normalized = NormalizeForCase($"{escaped}%");
+        var paramSql = AddParameter(normalized);
 
         var left = _ignoreCase ? $"LOWER({column})" : column;
-        var right = _ignoreCase ? $"LOWER({paramSql})" : paramSql;
+        var right = paramSql;
 
-        _sql.Append($"{left} LIKE {right} ESCAPE '\\\\'");
+        _sql.Append($"{left} LIKE {right} ESCAPE '\\'");
     }
 
     private void AppendLikeEndsWith(MemberExpression memberExpr, Expression argument)
@@ -382,12 +386,13 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
         var column = GetColumnNameForMember(memberExpr);
         var raw = EvaluateExpression(argument);
         var escaped = EscapeLikeValue(raw?.ToString() ?? string.Empty);
-        var paramSql = AddParameter($"%{escaped}");
+        var normalized = NormalizeForCase($"%{escaped}");
+        var paramSql = AddParameter(normalized);
 
         var left = _ignoreCase ? $"LOWER({column})" : column;
-        var right = _ignoreCase ? $"LOWER({paramSql})" : paramSql;
+        var right = paramSql;
 
-        _sql.Append($"{left} LIKE {right} ESCAPE '\\\\'");
+        _sql.Append($"{left} LIKE {right} ESCAPE '\\'");
     }
 
     private static string EscapeLikeValue(string value)
@@ -414,6 +419,17 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
 
     private bool IsNullLike(object? value)
         => value is null || (_treatEmptyStringAsNull && value is string s && s.Length == 0);
+
+    private object? NormalizeForCase(object? value)
+    {
+        if (!_ignoreCase)
+            return value;
+
+        if (value is string str)
+            return str.ToLowerInvariant();
+
+        return value;
+    }
 
     private void AppendParameter(object? value)
     {
