@@ -3,7 +3,6 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace ConnectionSample;
 
-[Table("Users", Schema = "dbo")]
 public class User
 {
     [Key()]
