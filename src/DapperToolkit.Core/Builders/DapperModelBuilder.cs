@@ -8,12 +8,14 @@ using DapperToolkit.Core.Mapping;
 
 namespace DapperToolkit.Core.Builders;
 
-public class DapperModelBuilder(ISqlDialect dialect)
+public class DapperModelBuilder(ISqlDialect dialect, string? defaultSchema = null)
 {
     private readonly ISqlDialect _dialect = dialect ?? throw new ArgumentNullException(nameof(dialect));
+    private readonly string? _defaultSchema = defaultSchema;
     private readonly Dictionary<Type, EntityConfig> _entities = [];
 
     public ISqlDialect Dialect => _dialect;
+    public string? DefaultSchema => _defaultSchema;
 
     public EntityTypeBuilder<TEntity> Entity<TEntity>()
     {
@@ -90,7 +92,7 @@ public class DapperModelBuilder(ISqlDialect dialect)
         return config;
     }
 
-    private static EntityMapping BuildEntityMapping(EntityConfig config)
+    private EntityMapping BuildEntityMapping(EntityConfig config)
     {
         var type = config.ClrType;
         var tableAttr = type.GetCustomAttribute<TableAttribute>();
@@ -100,7 +102,7 @@ public class DapperModelBuilder(ISqlDialect dialect)
             ? tableAttr?.Name ?? type.Name
             : config.TableName;
 
-        var schema = config.Schema ?? tableAttr?.Schema;
+        var schema = config.Schema ?? tableAttr?.Schema ?? _defaultSchema;
         var props = type.GetProperties(BindingFlags.Instance | BindingFlags.Public)
             .Where(p =>
                 p.CanRead &&

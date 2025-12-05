@@ -7,6 +7,7 @@ public class SqlServerDialect : ISqlDialect
     public static readonly SqlServerDialect Instance = new();
 
     public string Name => "SqlServer";
+    public string? DefaultSchema => "dbo";
 
     public string FormatParameter(string baseName) => "@" + baseName;
 

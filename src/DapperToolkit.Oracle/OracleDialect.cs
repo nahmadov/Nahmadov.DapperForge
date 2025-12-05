@@ -7,6 +7,7 @@ public class OracleDialect : ISqlDialect
     public static readonly OracleDialect Instance = new();
 
     public string Name => "Oracle";
+    public string? DefaultSchema => null;
 
     public string FormatParameter(string baseName) => ":" + baseName;
 

@@ -104,7 +104,7 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
     {
         if (_modelBuilt) return;
 
-        var builder = new DapperModelBuilder(_options.Dialect!);
+        var builder = new DapperModelBuilder(_options.Dialect!, _options.Dialect?.DefaultSchema);
 
         // 1) Attribute-lərə əsaslanan ilkin mapping-ləri yığ
         InitializeMappingsFromAttributes(builder);
