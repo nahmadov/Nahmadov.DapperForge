@@ -4,14 +4,33 @@ using DapperToolkit.Core.Mapping;
 
 namespace DapperToolkit.Core.Validation;
 
+/// <summary>
+/// Performs validation for entities based on mapping and data annotations.
+/// </summary>
 internal static class EntityValidator<TEntity> where TEntity : class
 {
+    /// <summary>
+    /// Validates an entity for insert operations.
+    /// </summary>
+    /// <param name="entity">Entity to validate.</param>
+    /// <param name="mapping">Mapping metadata describing the entity.</param>
     public static void ValidateForInsert(TEntity entity, EntityMapping mapping)
         => Validate(entity, mapping, isInsert: true);
 
+    /// <summary>
+    /// Validates an entity for update operations.
+    /// </summary>
+    /// <param name="entity">Entity to validate.</param>
+    /// <param name="mapping">Mapping metadata describing the entity.</param>
     public static void ValidateForUpdate(TEntity entity, EntityMapping mapping)
         => Validate(entity, mapping, isInsert: false);
 
+    /// <summary>
+    /// Validates the entity based on required fields and length constraints.
+    /// </summary>
+    /// <param name="entity">Entity instance to validate.</param>
+    /// <param name="mapping">Mapping metadata describing the entity.</param>
+    /// <param name="isInsert">Indicates whether the operation is an insert.</param>
     private static void Validate(TEntity entity, EntityMapping mapping, bool isInsert)
     {
         ArgumentNullException.ThrowIfNull(entity);

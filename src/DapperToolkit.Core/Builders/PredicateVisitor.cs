@@ -7,6 +7,9 @@ using DapperToolkit.Core.Mapping;
 
 namespace DapperToolkit.Core.Builders;
 
+/// <summary>
+/// Translates LINQ expression trees into SQL predicates and parameter objects.
+/// </summary>
 public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
     where TEntity : class
 {
@@ -15,12 +18,17 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
     private readonly Dictionary<PropertyInfo, PropertyMapping> _propertyLookup;
 
     private readonly StringBuilder _sql = new();
-    private readonly Dictionary<string, object?> _parameters = new();
+    private readonly Dictionary<string, object?> _parameters = [];
     private int _paramIndex;
     private bool _ignoreCase;
     private readonly bool _defaultIgnoreCase;
     private readonly bool _treatEmptyStringAsNull;
 
+    /// <summary>
+    /// Initializes a new predicate visitor for the given mapping and dialect.
+    /// </summary>
+    /// <param name="mapping">Entity mapping metadata.</param>
+    /// <param name="dialect">SQL dialect used for identifier and parameter formatting.</param>
     public PredicateVisitor(EntityMapping mapping, ISqlDialect dialect)
     {
         _mapping = mapping ?? throw new ArgumentNullException(nameof(mapping));
@@ -30,6 +38,12 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
         _treatEmptyStringAsNull = string.Equals(_dialect.Name, "Oracle", StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// Translates a boolean predicate expression into SQL and parameters.
+    /// </summary>
+    /// <param name="predicate">Expression to translate.</param>
+    /// <param name="ignoreCase">Optional override for case-insensitive comparisons.</param>
+    /// <returns>Tuple containing SQL text and parameter object.</returns>
     public (string Sql, object Parameters) Translate(Expression<Func<TEntity, bool>> predicate, bool? ignoreCase = null)
     {
         ArgumentNullException.ThrowIfNull(predicate);
@@ -47,6 +61,10 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
         return (_sql.ToString(), new Dictionary<string, object?>(_parameters));
     }
 
+    /// <summary>
+    /// Visits binary expressions and emits SQL operators or specialized comparisons.
+    /// </summary>
+    /// <param name="node">Binary expression to translate.</param>
     protected override Expression VisitBinary(BinaryExpression node)
     {
         if (TryHandleBooleanComparison(node))
@@ -66,6 +84,10 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
         return node;
     }
 
+    /// <summary>
+    /// Visits member access expressions to translate entity properties or closure values.
+    /// </summary>
+    /// <param name="node">Member expression to translate.</param>
     protected override Expression VisitMember(MemberExpression node)
     {
         if (PredicateVisitor<TEntity>.IsEntityProperty(node))
@@ -97,6 +119,10 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
         return base.VisitMember(node);
     }
 
+    /// <summary>
+    /// Visits constant expressions and emits literal SQL or parameters.
+    /// </summary>
+    /// <param name="node">Constant expression to translate.</param>
     protected override Expression VisitConstant(ConstantExpression node)
     {
         if (node.Value is bool b)
@@ -115,6 +141,10 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
         return node;
     }
 
+    /// <summary>
+    /// Visits method calls to translate supported string operations.
+    /// </summary>
+    /// <param name="node">Method call expression to translate.</param>
     protected override Expression VisitMethodCall(MethodCallExpression node)
     {
         if (node.Method.Name == nameof(string.Contains) &&
@@ -144,6 +174,10 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
         throw new NotSupportedException($"Method call '{node.Method.Name}' is not supported.");
     }
 
+    /// <summary>
+    /// Visits unary expressions such as logical NOT.
+    /// </summary>
+    /// <param name="node">Unary expression to translate.</param>
     protected override Expression VisitUnary(UnaryExpression node)
     {
         if (node.NodeType == ExpressionType.Not)
@@ -157,6 +191,11 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
         return base.VisitUnary(node);
     }
 
+    /// <summary>
+    /// Handles predicates that consist solely of a boolean entity property (or its negation).
+    /// </summary>
+    /// <param name="body">Expression body to inspect.</param>
+    /// <returns>True if handled directly; otherwise false.</returns>
     private bool TryHandleBooleanProjection(Expression body)
     {
         if (body is MemberExpression member && IsEntityBooleanMember(member))
@@ -175,6 +214,11 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
         return false;
     }
 
+    /// <summary>
+    /// Handles boolean equality/inequality comparisons for entity properties.
+    /// </summary>
+    /// <param name="node">Binary expression to inspect.</param>
+    /// <returns>True if translated; otherwise false.</returns>
     private bool TryHandleBooleanComparison(BinaryExpression node)
     {
         if (node.NodeType is not (ExpressionType.Equal or ExpressionType.NotEqual))
@@ -188,6 +232,11 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
         return true;
     }
 
+    /// <summary>
+    /// Handles comparisons against null or null-like values.
+    /// </summary>
+    /// <param name="node">Binary expression to inspect.</param>
+    /// <returns>True if translated; otherwise false.</returns>
     private bool TryHandleNullComparison(BinaryExpression node)
     {
         if (node.NodeType is not (ExpressionType.Equal or ExpressionType.NotEqual))
@@ -208,6 +257,11 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
         return false;
     }
 
+    /// <summary>
+    /// Appends a null or not-null check for the provided expression.
+    /// </summary>
+    /// <param name="expr">Expression referencing a column.</param>
+    /// <param name="isEqual">True for IS NULL; false for IS NOT NULL.</param>
     private void AppendNullComparison(Expression expr, bool isEqual)
     {
         _sql.Append('(');
@@ -215,12 +269,21 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
         _sql.Append(isEqual ? " IS NULL)" : " IS NOT NULL)");
     }
 
+    /// <summary>
+    /// Appends a boolean equality comparison for the specified member.
+    /// </summary>
+    /// <param name="member">Entity property member.</param>
+    /// <param name="value">Boolean literal value.</param>
     private void AppendBooleanComparison(MemberExpression member, bool value)
     {
         var column = GetColumnNameForMember(member);
         _sql.Append($"{column} = {_dialect.FormatBoolean(value)}");
     }
 
+    /// <summary>
+    /// Appends a column reference for the given property, handling bare boolean projections.
+    /// </summary>
+    /// <param name="property">Entity property being referenced.</param>
     private void AppendColumn(PropertyInfo property)
     {
         if (!_propertyLookup.TryGetValue(property, out var map))
@@ -229,7 +292,6 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
         var column = _dialect.QuoteIdentifier(map.ColumnName);
         var propType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
 
-        // Bare boolean members in predicates should translate to column = TRUE
         if (propType == typeof(bool))
         {
             _sql.Append($"{column} = {_dialect.FormatBoolean(true)}");
@@ -240,6 +302,11 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
         }
     }
 
+    /// <summary>
+    /// Maps expression node types to SQL operators.
+    /// </summary>
+    /// <param name="nodeType">Expression node type.</param>
+    /// <returns>SQL operator string.</returns>
     private static string GetSqlOperator(ExpressionType nodeType) => nodeType switch
     {
         ExpressionType.Equal => " = ",
@@ -253,11 +320,20 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
         _ => throw new NotSupportedException($"Unsupported node: {nodeType}")
     };
 
+    /// <summary>
+    /// Appends a tautology or contradiction for boolean constants.
+    /// </summary>
+    /// <param name="value">Boolean constant value.</param>
     private void AppendBooleanLiteral(bool value)
     {
         _sql.Append(value ? "1=1" : "1=0");
     }
 
+    /// <summary>
+    /// Handles case-sensitive or insensitive string equality comparisons.
+    /// </summary>
+    /// <param name="node">Binary expression to inspect.</param>
+    /// <returns>True if translated; otherwise false.</returns>
     private bool TryHandleStringEquality(BinaryExpression node)
     {
         if (node.NodeType is not (ExpressionType.Equal or ExpressionType.NotEqual))
@@ -298,6 +374,13 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
         return true;
     }
 
+    /// <summary>
+    /// Determines whether the binary expression compares a boolean entity property to a literal.
+    /// </summary>
+    /// <param name="node">Binary expression being inspected.</param>
+    /// <param name="member">Output entity member involved in the comparison.</param>
+    /// <param name="value">Output literal boolean value.</param>
+    /// <returns>True when the comparison can be translated.</returns>
     private bool IsBooleanComparison(BinaryExpression node, out MemberExpression member, out bool value)
     {
         if (node.Left is MemberExpression left && IsEntityBooleanMember(left) &&
@@ -319,6 +402,12 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
         return false;
     }
 
+    /// <summary>
+    /// Evaluates an expression to a boolean value when possible.
+    /// </summary>
+    /// <param name="expr">Expression to evaluate.</param>
+    /// <param name="value">Resulting boolean value.</param>
+    /// <returns>True when evaluation succeeds.</returns>
     private static bool TryEvalToBool(Expression expr, out bool value)
     {
         var v = EvaluateExpression(expr);
@@ -332,6 +421,11 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
         return false;
     }
 
+    /// <summary>
+    /// Determines whether a member expression refers to a boolean entity property.
+    /// </summary>
+    /// <param name="node">Member expression to inspect.</param>
+    /// <returns>True when the member is a boolean property on the entity.</returns>
     private bool IsEntityBooleanMember(MemberExpression node)
     {
         if (!PredicateVisitor<TEntity>.IsEntityProperty(node))
@@ -342,18 +436,33 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
         return underlying == typeof(bool);
     }
 
+    /// <summary>
+    /// Determines whether a member expression refers to a string entity property.
+    /// </summary>
+    /// <param name="node">Member expression to inspect.</param>
+    /// <returns>True when the member is a string property.</returns>
     private bool IsStringProperty(MemberExpression node)
     {
         return PredicateVisitor<TEntity>.IsEntityProperty(node) &&
                ((PropertyInfo)node.Member).PropertyType == typeof(string);
     }
 
+    /// <summary>
+    /// Checks whether a member expression targets a property on the entity type.
+    /// </summary>
+    /// <param name="node">Member expression to inspect.</param>
+    /// <returns>True when the member is an entity property.</returns>
     private static bool IsEntityProperty(MemberExpression node)
     {
         return typeof(TEntity).IsAssignableFrom(node.Expression?.Type ?? typeof(object)) &&
                node.Member is PropertyInfo;
     }
 
+    /// <summary>
+    /// Gets the quoted column name for the specified member expression.
+    /// </summary>
+    /// <param name="node">Member expression referencing an entity property.</param>
+    /// <returns>Quoted column name.</returns>
     private string GetColumnNameForMember(MemberExpression node)
     {
         var prop = (PropertyInfo)node.Member;
@@ -363,6 +472,11 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
         throw new InvalidOperationException($"No mapping found for property '{prop.Name}'.");
     }
 
+    /// <summary>
+    /// Appends a LIKE predicate that matches the substring anywhere.
+    /// </summary>
+    /// <param name="memberExpr">Member representing the column.</param>
+    /// <param name="argument">Expression producing the search value.</param>
     private void AppendLikeContains(MemberExpression memberExpr, Expression argument)
     {
         var column = GetColumnNameForMember(memberExpr);
@@ -377,6 +491,11 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
         _sql.Append($"{left} LIKE {right} ESCAPE '\\'");
     }
 
+    /// <summary>
+    /// Appends a LIKE predicate that matches the start of the string.
+    /// </summary>
+    /// <param name="memberExpr">Member representing the column.</param>
+    /// <param name="argument">Expression producing the search value.</param>
     private void AppendLikeStartsWith(MemberExpression memberExpr, Expression argument)
     {
         var column = GetColumnNameForMember(memberExpr);
@@ -391,6 +510,11 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
         _sql.Append($"{left} LIKE {right} ESCAPE '\\'");
     }
 
+    /// <summary>
+    /// Appends a LIKE predicate that matches the end of the string.
+    /// </summary>
+    /// <param name="memberExpr">Member representing the column.</param>
+    /// <param name="argument">Expression producing the search value.</param>
     private void AppendLikeEndsWith(MemberExpression memberExpr, Expression argument)
     {
         var column = GetColumnNameForMember(memberExpr);
@@ -405,6 +529,11 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
         _sql.Append($"{left} LIKE {right} ESCAPE '\\'");
     }
 
+    /// <summary>
+    /// Escapes LIKE wildcard characters and escape characters in a value.
+    /// </summary>
+    /// <param name="value">Value to escape.</param>
+    /// <returns>Escaped string safe for LIKE expressions.</returns>
     private static string EscapeLikeValue(string value)
     {
         return value
@@ -413,6 +542,11 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
             .Replace("_", "\\_");
     }
 
+    /// <summary>
+    /// Determines whether an expression represents a null-like value.
+    /// </summary>
+    /// <param name="expr">Expression to inspect.</param>
+    /// <returns>True when the expression is null or empty string (for Oracle).</returns>
     private bool IsNullLike(Expression expr)
     {
         if (expr is ConstantExpression constant)
@@ -424,13 +558,22 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
             return IsNullLike(value);
         }
 
-        // Non-constant expressions (e.g., entity members) are never treated as null-like here.
         return false;
     }
 
+    /// <summary>
+    /// Determines whether a value is considered null-like (null or empty string for Oracle).
+    /// </summary>
+    /// <param name="value">Value to inspect.</param>
+    /// <returns>True when null-like.</returns>
     private bool IsNullLike(object? value)
         => value is null || (_treatEmptyStringAsNull && value is string s && s.Length == 0);
 
+    /// <summary>
+    /// Normalizes values for case-insensitive comparisons when needed.
+    /// </summary>
+    /// <param name="value">Value to normalize.</param>
+    /// <returns>Normalized value.</returns>
     private object? NormalizeForCase(object? value)
     {
         if (!_ignoreCase)
@@ -442,12 +585,21 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
         return value;
     }
 
+    /// <summary>
+    /// Adds a parameter to the parameter bag and appends its placeholder to SQL.
+    /// </summary>
+    /// <param name="value">Parameter value.</param>
     private void AppendParameter(object? value)
     {
         var paramSql = AddParameter(value);
         _sql.Append(paramSql);
     }
 
+    /// <summary>
+    /// Adds a parameter and returns the dialect-formatted placeholder.
+    /// </summary>
+    /// <param name="value">Parameter value.</param>
+    /// <returns>Formatted parameter placeholder.</returns>
     private string AddParameter(object? value)
     {
         var paramKey = $"p{_paramIndex++}";
@@ -455,6 +607,12 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
         return _dialect.FormatParameter(paramKey);
     }
 
+    /// <summary>
+    /// Retrieves the value of a captured closure field or property.
+    /// </summary>
+    /// <param name="closureObject">Closure object instance.</param>
+    /// <param name="member">Field or property info.</param>
+    /// <returns>Extracted value.</returns>
     private static object? GetValueFromClosure(object? closureObject, MemberInfo member)
     {
         return closureObject is null
@@ -467,6 +625,11 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
             };
     }
 
+    /// <summary>
+    /// Evaluates an expression by compiling and executing it when not a constant.
+    /// </summary>
+    /// <param name="expr">Expression to evaluate.</param>
+    /// <returns>Resulting value.</returns>
     private static object? EvaluateExpression(Expression expr)
     {
         if (expr is ConstantExpression constant)

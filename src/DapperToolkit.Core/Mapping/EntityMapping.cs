@@ -2,6 +2,9 @@ using System.Reflection;
 
 namespace DapperToolkit.Core.Mapping;
 
+/// <summary>
+/// Represents an immutable mapping between an entity type and its database representation.
+/// </summary>
 public class EntityMapping(
     Type entityType,
     string tableName,

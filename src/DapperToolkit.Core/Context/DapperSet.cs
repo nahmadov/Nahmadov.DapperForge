@@ -10,12 +10,21 @@ using DapperToolkit.Core.Validation;
 
 namespace DapperToolkit.Core.Context;
 
+/// <summary>
+/// Provides query and command operations for a specific entity type.
+/// </summary>
 public sealed class DapperSet<TEntity> where TEntity : class
 {
     private readonly DapperDbContext _context;
     private readonly SqlGenerator<TEntity> _generator;
     private readonly EntityMapping _mapping;
 
+    /// <summary>
+    /// Initializes a new <see cref="DapperSet{TEntity}"/> instance.
+    /// </summary>
+    /// <param name="context">Owning database context.</param>
+    /// <param name="generator">SQL generator for the entity.</param>
+    /// <param name="mapping">Mapping metadata.</param>
     internal DapperSet(DapperDbContext context, SqlGenerator<TEntity> generator, EntityMapping mapping)
     {
         _context = context;
@@ -25,9 +34,17 @@ public sealed class DapperSet<TEntity> where TEntity : class
 
     #region Query
 
+    /// <summary>
+    /// Retrieves all rows for the entity.
+    /// </summary>
     public Task<IEnumerable<TEntity>> GetAllAsync()
         => _context.QueryAsync<TEntity>(_generator.SelectAllSql);
 
+    /// <summary>
+    /// Finds an entity by key value.
+    /// </summary>
+    /// <param name="key">Key value or composite key object.</param>
+    /// <returns>The matching entity or null.</returns>
     public Task<TEntity?> FindAsync(object key)
     {
         if (_mapping.KeyProperties.Count == 0)
@@ -48,6 +65,12 @@ public sealed class DapperSet<TEntity> where TEntity : class
         return _context.QueryFirstOrDefaultAsync<TEntity>(_generator.SelectByIdSql, param);
     }
 
+    /// <summary>
+    /// Executes a filtered query using the specified predicate.
+    /// </summary>
+    /// <param name="predicate">Predicate expression to translate.</param>
+    /// <param name="ignoreCase">When true, uses case-insensitive comparison where supported.</param>
+    /// <returns>Enumerable of matching entities.</returns>
     public Task<IEnumerable<TEntity>> WhereAsync(Expression<Func<TEntity, bool>> predicate, bool ignoreCase = false)
     {
         var dialect = _generator.Dialect;
@@ -58,6 +81,11 @@ public sealed class DapperSet<TEntity> where TEntity : class
         return _context.QueryAsync<TEntity>(finalSql, parameters);
     }
 
+    /// <summary>
+    /// Returns the first entity matching the predicate or null if none are found.
+    /// </summary>
+    /// <param name="predicate">Predicate expression to translate.</param>
+    /// <param name="ignoreCase">When true, uses case-insensitive comparison where supported.</param>
     public Task<TEntity?> FirstOrDefaultAsync(Expression<Func<TEntity, bool>> predicate, bool ignoreCase = false)
     {
         var dialect = _generator.Dialect;
@@ -72,6 +100,10 @@ public sealed class DapperSet<TEntity> where TEntity : class
 
     #region Insert / Update / Delete
 
+    /// <summary>
+    /// Inserts a new entity and returns affected row count.
+    /// </summary>
+    /// <param name="entity">Entity to insert.</param>
     public Task<int> InsertAsync(TEntity entity)
     {
         EnsureCanMutate();
@@ -85,6 +117,10 @@ public sealed class DapperSet<TEntity> where TEntity : class
         return _context.ExecuteAsync(_generator.InsertSql, entity);
     }
 
+    /// <summary>
+    /// Updates an existing entity and throws if no rows are affected.
+    /// </summary>
+    /// <param name="entity">Entity to update.</param>
     public async Task<int> UpdateAsync(TEntity entity)
     {
         EnsureCanMutate();
@@ -106,6 +142,10 @@ public sealed class DapperSet<TEntity> where TEntity : class
         return affected;
     }
 
+    /// <summary>
+    /// Deletes an entity using its key values.
+    /// </summary>
+    /// <param name="entity">Entity to delete.</param>
     public async Task<int> DeleteAsync(TEntity entity)
     {
         EnsureCanMutate();
@@ -126,6 +166,10 @@ public sealed class DapperSet<TEntity> where TEntity : class
         return affected;
     }
 
+    /// <summary>
+    /// Deletes an entity by key value.
+    /// </summary>
+    /// <param name="key">Key value or composite key object.</param>
     public async Task<int> DeleteByIdAsync(object key)
     {
         EnsureCanMutate();
@@ -155,6 +199,11 @@ public sealed class DapperSet<TEntity> where TEntity : class
         return affected;
     }
 
+    /// <summary>
+    /// Inserts a new entity and returns the generated key value.
+    /// </summary>
+    /// <typeparam name="TKey">Key value type.</typeparam>
+    /// <param name="entity">Entity to insert.</param>
     public async Task<TKey> InsertAndGetIdAsync<TKey>(TEntity entity)
     {
         EnsureCanMutate();
@@ -203,7 +252,6 @@ public sealed class DapperSet<TEntity> where TEntity : class
         }
         catch
         {
-            // burada fail etsə də kritik deyil: caller yenə id-ni alıb qaytaracaq
         }
 
         return id;
@@ -211,6 +259,9 @@ public sealed class DapperSet<TEntity> where TEntity : class
 
     #endregion
 
+    /// <summary>
+    /// Validates that the entity supports mutation operations.
+    /// </summary>
     private void EnsureCanMutate()
     {
         if (_mapping.IsReadOnly)
@@ -226,6 +277,11 @@ public sealed class DapperSet<TEntity> where TEntity : class
         }
     }
 
+    /// <summary>
+    /// Builds a parameter dictionary for key columns from various key representations.
+    /// </summary>
+    /// <param name="key">Key value, composite object, or dictionary.</param>
+    /// <returns>Dictionary mapping key property names to values.</returns>
     private Dictionary<string, object?> BuildKeyParameters(object key)
     {
         if (_mapping.KeyProperties.Count == 1)
@@ -268,6 +324,11 @@ public sealed class DapperSet<TEntity> where TEntity : class
         return resultFromObject;
     }
 
+    /// <summary>
+    /// Executes an Oracle insert using RETURNING INTO and extracts the generated key.
+    /// </summary>
+    /// <typeparam name="TKey">Key type to return.</typeparam>
+    /// <param name="entity">Entity being inserted.</param>
     private async Task<TKey> ExecuteOracleInsertReturningAsync<TKey>(TEntity entity)
     {
         var keyProp = _generator.KeyProperty

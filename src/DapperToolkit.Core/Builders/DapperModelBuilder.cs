@@ -8,21 +8,44 @@ using DapperToolkit.Core.Mapping;
 
 namespace DapperToolkit.Core.Builders;
 
+/// <summary>
+/// Provides fluent configuration for mapping CLR types to database tables for Dapper.
+/// </summary>
+/// <param name="dialect">SQL dialect used when generating identifiers and SQL fragments.</param>
+/// <param name="defaultSchema">Optional default schema to apply when no schema is specified.</param>
 public class DapperModelBuilder(ISqlDialect dialect, string? defaultSchema = null)
 {
     private readonly ISqlDialect _dialect = dialect ?? throw new ArgumentNullException(nameof(dialect));
     private readonly string? _defaultSchema = defaultSchema;
     private readonly Dictionary<Type, EntityConfig> _entities = [];
 
+    /// <summary>
+    /// Gets the SQL dialect used by the model builder.
+    /// </summary>
     public ISqlDialect Dialect => _dialect;
+
+    /// <summary>
+    /// Gets the default schema applied when an entity does not specify a schema.
+    /// </summary>
     public string? DefaultSchema => _defaultSchema;
 
+    /// <summary>
+    /// Starts configuration for an entity type using a generic type parameter.
+    /// </summary>
+    /// <typeparam name="TEntity">The CLR entity type to configure.</typeparam>
+    /// <returns>An <see cref="EntityTypeBuilder{TEntity}"/> for the entity type.</returns>
     public EntityTypeBuilder<TEntity> Entity<TEntity>()
     {
         var config = GetOrCreateConfig(typeof(TEntity));
         return new EntityTypeBuilder<TEntity>(config);
     }
 
+    /// <summary>
+    /// Configures an entity type using the provided callback.
+    /// </summary>
+    /// <typeparam name="TEntity">The CLR entity type to configure.</typeparam>
+    /// <param name="configure">Delegate that applies configuration to the entity builder.</param>
+    /// <returns>An <see cref="EntityTypeBuilder{TEntity}"/> for the entity type.</returns>
     public EntityTypeBuilder<TEntity> Entity<TEntity>(Action<EntityTypeBuilder<TEntity>> configure)
     {
         ArgumentNullException.ThrowIfNull(configure);
@@ -32,6 +55,11 @@ public class DapperModelBuilder(ISqlDialect dialect, string? defaultSchema = nul
         return builder;
     }
 
+    /// <summary>
+    /// Starts configuration for an entity type using a runtime <see cref="Type"/>.
+    /// </summary>
+    /// <param name="clrType">The CLR entity type to configure.</param>
+    /// <returns>An <see cref="IEntityTypeBuilder"/> for the entity type.</returns>
     public IEntityTypeBuilder Entity(Type clrType)
     {
         ArgumentNullException.ThrowIfNull(clrType);
@@ -41,6 +69,12 @@ public class DapperModelBuilder(ISqlDialect dialect, string? defaultSchema = nul
         return (IEntityTypeBuilder)Activator.CreateInstance(builderType, config)!;
     }
 
+    /// <summary>
+    /// Configures an entity type using the provided callback for runtime types.
+    /// </summary>
+    /// <param name="clrType">The CLR entity type to configure.</param>
+    /// <param name="configure">Delegate that applies configuration to the entity builder.</param>
+    /// <returns>An <see cref="IEntityTypeBuilder"/> for the entity type.</returns>
     public IEntityTypeBuilder Entity(Type clrType, Action<IEntityTypeBuilder> configure)
     {
         ArgumentNullException.ThrowIfNull(configure);
@@ -50,6 +84,11 @@ public class DapperModelBuilder(ISqlDialect dialect, string? defaultSchema = nul
         return builder;
     }
 
+    /// <summary>
+    /// Applies a reusable configuration instance to the corresponding entity type.
+    /// </summary>
+    /// <typeparam name="TEntity">The CLR entity type being configured.</typeparam>
+    /// <param name="configuration">Configuration class implementing entity settings.</param>
     public void ApplyConfiguration<TEntity>(IEntityTypeConfiguration<TEntity> configuration)
     {
         ArgumentNullException.ThrowIfNull(configuration);
@@ -58,6 +97,10 @@ public class DapperModelBuilder(ISqlDialect dialect, string? defaultSchema = nul
         configuration.Configure(builder);
     }
 
+    /// <summary>
+    /// Builds immutable entity mappings based on the collected configurations and attributes.
+    /// </summary>
+    /// <returns>A read-only dictionary of entity mappings keyed by CLR type.</returns>
     public IReadOnlyDictionary<Type, EntityMapping> Build()
     {
         var mappings = new Dictionary<Type, EntityMapping>();
@@ -71,6 +114,11 @@ public class DapperModelBuilder(ISqlDialect dialect, string? defaultSchema = nul
         return mappings;
     }
 
+    /// <summary>
+    /// Retrieves an existing entity configuration or creates a new one for the given CLR type.
+    /// </summary>
+    /// <param name="clrType">The CLR entity type being configured.</param>
+    /// <returns>The <see cref="EntityConfig"/> associated with the CLR type.</returns>
     private EntityConfig GetOrCreateConfig(Type clrType)
     {
         if (_entities.TryGetValue(clrType, out var existing))
@@ -92,13 +140,17 @@ public class DapperModelBuilder(ISqlDialect dialect, string? defaultSchema = nul
         return config;
     }
 
+    /// <summary>
+    /// Builds an <see cref="EntityMapping"/> instance from the provided configuration and reflection metadata.
+    /// </summary>
+    /// <param name="config">The configuration data collected for the entity type.</param>
+    /// <returns>An immutable mapping describing table, schema, keys, and properties.</returns>
     private EntityMapping BuildEntityMapping(EntityConfig config)
     {
         var type = config.ClrType;
         var tableAttr = type.GetCustomAttribute<TableAttribute>();
         var readOnlyAttr = type.GetCustomAttribute<ReadOnlyEntityAttribute>();
 
-        // Priority: explicit fluent config -> attributes -> DbSet property convention/CLR name
         var tableName = !string.IsNullOrWhiteSpace(config.TableName)
             ? config.TableName
             : tableAttr?.Name ?? type.Name;

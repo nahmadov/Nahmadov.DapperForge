@@ -5,18 +5,28 @@ using DapperToolkit.Core.Attributes;
 
 namespace DapperToolkit.Core.Mapping;
 
+/// <summary>
+/// Builds and caches attribute-based entity mappings to reduce reflection overhead.
+/// </summary>
 internal static class EntityMappingCache<TEntity>
     where TEntity : class
 {
+    /// <summary>
+    /// Cached mapping for the entity type.
+    /// </summary>
     public static readonly EntityMapping Mapping = Build();
 
+    /// <summary>
+    /// Creates mapping metadata using attributes and conventions.
+    /// </summary>
+    /// <returns>An <see cref="EntityMapping"/> describing table, schema, keys, and properties.</returns>
     private static EntityMapping Build()
     {
         var type = typeof(TEntity);
 
         var tableAttr = type.GetCustomAttribute<TableAttribute>();
         var tableName = tableAttr?.Name ?? type.Name;
-        string? schema = tableAttr?.Schema;  // ⬅️ Schema dəstəyi
+        string? schema = tableAttr?.Schema;
 
         var props = type.GetProperties(BindingFlags.Instance | BindingFlags.Public)
                         .Where(p =>
@@ -68,6 +78,11 @@ internal static class EntityMappingCache<TEntity>
         return new EntityMapping(type, tableName, schema, keyProps, props, propertyMappings, isReadOnly);
     }
 
+    /// <summary>
+    /// Normalizes a key name by removing non-alphanumeric characters and upper-casing for comparisons.
+    /// </summary>
+    /// <param name="name">Key name to normalize.</param>
+    /// <returns>Normalized key string.</returns>
     private static string NormalizeKeyName(string name)
         => new(name.Where(char.IsLetterOrDigit).Select(char.ToUpperInvariant).ToArray());
 }

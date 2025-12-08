@@ -1,5 +1,8 @@
 namespace DapperToolkit.Core.Mapping;
 
+/// <summary>
+/// Holds mutable configuration collected via the fluent API for an entity type.
+/// </summary>
 public class EntityConfig(Type clrType)
 {
     public Type ClrType { get; } = clrType;
@@ -10,13 +13,29 @@ public class EntityConfig(Type clrType)
     public List<string> KeyProperties { get; } = new();
     public Dictionary<string, PropertyConfig> Properties { get; } = [];
 
+    /// <summary>
+    /// Configures the table name and optional schema for the entity.
+    /// </summary>
+    /// <param name="tableName">Target table name.</param>
+    /// <param name="schema">Optional schema name.</param>
     public void SetTable(string tableName, string? schema = null)
     {
         TableName = tableName;
         Schema = schema;
     }
 
+    /// <summary>
+    /// Sets only the table name while preserving the existing schema value.
+    /// </summary>
     public void SetTableName(string tableName) => SetTable(tableName, Schema);
+
+    /// <summary>
+    /// Marks the entity as read-only, disabling write operations.
+    /// </summary>
     public void SetReadOnly(bool isReadOnly) => IsReadOnly = isReadOnly;
+
+    /// <summary>
+    /// Marks the entity as having no key defined.
+    /// </summary>
     public void SetNoKey() => HasKey = false;
 }

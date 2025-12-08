@@ -1,5 +1,8 @@
 namespace DapperToolkit.Core.Mapping;
 
+/// <summary>
+/// Stores fluent configuration options for a single entity property.
+/// </summary>
 public class PropertyConfig(string propertyName)
 {
     public string PropertyName { get; } = propertyName;
@@ -9,9 +12,28 @@ public class PropertyConfig(string propertyName)
     public int? MaxLength { get; private set; }
     public string? SequenceName { get; private set; }
 
+    /// <summary>
+    /// Sets the database column name for the property.
+    /// </summary>
     public void SetColumnName(string columnName) => ColumnName = columnName;
+
+    /// <summary>
+    /// Marks the property as required.
+    /// </summary>
     public void SetRequired(bool required) => IsRequired = required;
+
+    /// <summary>
+    /// Marks the property as read-only.
+    /// </summary>
     public void SetReadOnly(bool readOnly) => IsReadOnly = readOnly;
+
+    /// <summary>
+    /// Sets the maximum length constraint for the property.
+    /// </summary>
     public void SetMaxLength(int? length) => MaxLength = length;
+
+    /// <summary>
+    /// Assigns the database sequence used to generate values.
+    /// </summary>
     public void SetSequence(string? sequenceName) => SequenceName = sequenceName;
 }

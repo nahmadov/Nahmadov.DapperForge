@@ -2,28 +2,50 @@ using DapperToolkit.Core.Mapping;
 
 namespace DapperToolkit.Core.Builders;
 
+/// <summary>
+/// Fluent builder for configuring an individual property mapping.
+/// </summary>
 public class PropertyBuilder(PropertyConfig property)
 {
     private readonly PropertyConfig _property = property;
 
+    /// <summary>
+    /// Overrides the column name for the property.
+    /// </summary>
+    /// <param name="columnName">Database column name.</param>
+    /// <returns>The current builder for chaining.</returns>
     public PropertyBuilder HasColumnName(string columnName)
     {
         _property.SetColumnName(columnName);
         return this;
     }
 
+    /// <summary>
+    /// Marks the property as required.
+    /// </summary>
+    /// <returns>The current builder for chaining.</returns>
     public PropertyBuilder IsRequired()
     {
         _property.SetRequired(true);
         return this;
     }
 
+    /// <summary>
+    /// Sets the maximum allowed length for string values.
+    /// </summary>
+    /// <param name="maxLength">Maximum character length.</param>
+    /// <returns>The current builder for chaining.</returns>
     public PropertyBuilder HasMaxLength(int maxLength)
     {
         _property.SetMaxLength(maxLength);
         return this;
     }
 
+    /// <summary>
+    /// Assigns a database sequence to generate values for the property.
+    /// </summary>
+    /// <param name="sequenceName">Sequence name.</param>
+    /// <returns>The current builder for chaining.</returns>
     public PropertyBuilder HasSequence(string sequenceName)
     {
         if (string.IsNullOrWhiteSpace(sequenceName))
@@ -33,6 +55,10 @@ public class PropertyBuilder(PropertyConfig property)
         return this;
     }
 
+    /// <summary>
+    /// Marks the property as read-only, excluding it from updates.
+    /// </summary>
+    /// <returns>The current builder for chaining.</returns>
     public PropertyBuilder IsReadOnly()
     {
         _property.SetReadOnly(true);
