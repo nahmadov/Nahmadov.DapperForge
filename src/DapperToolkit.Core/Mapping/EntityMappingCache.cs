@@ -39,22 +39,6 @@ internal static class EntityMappingCache<TEntity>
         if (props.Length == 0)
             throw new InvalidOperationException($"Type {type.Name} has no writable public properties.");
 
-        var propertyMappings = props.Select(p =>
-        {
-            var colAttr = p.GetCustomAttribute<ColumnAttribute>();
-            var genAttr = p.GetCustomAttribute<DatabaseGeneratedAttribute>();
-            var required = p.GetCustomAttribute<KeyAttribute>() is not null
-                           || p.GetCustomAttribute<RequiredAttribute>() is not null;
-
-            var stringLength = p.GetCustomAttribute<StringLengthAttribute>();
-            var maxLengthAttr = p.GetCustomAttribute<MaxLengthAttribute>();
-            var maxLength = stringLength?.MaximumLength > 0
-                ? stringLength.MaximumLength
-                : maxLengthAttr?.Length > 0 ? maxLengthAttr.Length : (int?)null;
-
-            return new PropertyMapping(p, colAttr, genAttr, false, required, maxLength);
-        }).ToList();
-
         var isReadOnly = type.GetCustomAttribute<ReadOnlyEntityAttribute>() is not null;
 
         var keyProps = props
@@ -74,6 +58,27 @@ internal static class EntityMappingCache<TEntity>
         if (keyProps.Count == 0 && !isReadOnly)
             throw new InvalidOperationException(
                 $"Type {type.Name} has no key property. Define [Key] or an 'Id'/{type.Name}Id property.");
+
+        var propertyMappings = props.Select(p =>
+        {
+            var colAttr = p.GetCustomAttribute<ColumnAttribute>();
+            var genAttr = p.GetCustomAttribute<DatabaseGeneratedAttribute>();
+            var required = p.GetCustomAttribute<KeyAttribute>() is not null
+                           || p.GetCustomAttribute<RequiredAttribute>() is not null;
+
+            var stringLength = p.GetCustomAttribute<StringLengthAttribute>();
+            var maxLengthAttr = p.GetCustomAttribute<MaxLengthAttribute>();
+            var maxLength = stringLength?.MaximumLength > 0
+                ? stringLength.MaximumLength
+                : maxLengthAttr?.Length > 0 ? maxLengthAttr.Length : (int?)null;
+
+            if (genAttr is null && keyProps.Contains(p))
+            {
+                genAttr = new DatabaseGeneratedAttribute(DatabaseGeneratedOption.Identity);
+            }
+
+            return new PropertyMapping(p, colAttr, genAttr, false, required, maxLength);
+        }).ToList();
 
         return new EntityMapping(type, tableName, schema, keyProps, props, propertyMappings, isReadOnly);
     }
