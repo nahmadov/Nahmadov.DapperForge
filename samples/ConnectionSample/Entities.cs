@@ -3,11 +3,8 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace ConnectionSample;
 
-[Table("Customers", Schema = "dbo")]
 public class Customer
 {
-    [Key]
-    [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public int Id { get; set; }
 
     [Required, MaxLength(120)]
@@ -26,11 +23,9 @@ public class Customer
     public DateTime? LastLogin { get; set; }
 }
 
-[Table("SupportTickets", Schema = "dbo")]
 public class SupportTicket
 {
     [Key]
-    [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public int TicketId { get; set; }
 
     public int CustomerId { get; set; }
@@ -51,11 +46,8 @@ public class SupportTicket
     public DateTime? ClosedOn { get; set; }
 }
 
-[Table("AuditLogs", Schema = "dbo")]
 public class AuditLog
 {
-    [Key]
-    [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public int Id { get; set; }
 
     [MaxLength(100)]

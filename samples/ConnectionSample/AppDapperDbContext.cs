@@ -14,7 +14,6 @@ public class AppDapperDbContext(DapperDbContextOptions<AppDapperDbContext> optio
     {
         modelBuilder.Entity<Customer>(b =>
         {
-            b.ToTable("Customers", modelBuilder.DefaultSchema);
             b.Property(c => c.Name).HasColumnName("FullName").HasMaxLength(120).IsRequired();
             b.Property(c => c.Email).HasMaxLength(200);
             b.Property(c => c.City).HasMaxLength(100);
@@ -31,7 +30,6 @@ public class AppDapperDbContext(DapperDbContextOptions<AppDapperDbContext> optio
 
         modelBuilder.Entity<AuditLog>(b =>
         {
-            b.ToTable("AuditLogs", modelBuilder.DefaultSchema);
             b.Property(a => a.Entity).HasMaxLength(100);
             b.Property(a => a.Action).HasMaxLength(50);
             b.Property(a => a.Details).HasMaxLength(200);

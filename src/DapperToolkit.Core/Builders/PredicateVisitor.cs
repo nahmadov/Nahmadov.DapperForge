@@ -1,8 +1,13 @@
+using System.Collections;
+
 using System.Linq.Expressions;
+
 using System.Reflection;
+
 using System.Text;
 
 using DapperToolkit.Core.Interfaces;
+
 using DapperToolkit.Core.Mapping;
 
 namespace DapperToolkit.Core.Builders;
@@ -168,6 +173,12 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
             endsExpr.Expression is ParameterExpression)
         {
             AppendLikeEndsWith(endsExpr, node.Arguments[0]);
+            return node;
+        }
+
+        if (IsEnumerableContains(node, out var memberExprForIn, out var valuesExpr))
+        {
+            AppendInClause(memberExprForIn, valuesExpr);
             return node;
         }
 
@@ -458,6 +469,45 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
                node.Member is PropertyInfo;
     }
 
+    private bool IsEnumerableContains(MethodCallExpression node, out MemberExpression member, out Expression valuesExpr)
+    {
+        member = null!;
+        valuesExpr = null!;
+
+        // Pattern: list.Contains(entity.Property)
+        if (node.Method.Name == nameof(Enumerable.Contains) && node.Arguments.Count == 2)
+        {
+            if (node.Arguments[1] is MemberExpression me && IsEntityProperty(me))
+            {
+                member = me;
+                valuesExpr = node.Arguments[0];
+                return true;
+            }
+        }
+
+        if (node.Method.Name == nameof(List<int>.Contains) && node.Object is not null && node.Arguments.Count == 1)
+        {
+            if (node.Arguments[0] is MemberExpression me && IsEntityProperty(me))
+            {
+                member = me;
+                valuesExpr = node.Object;
+                return true;
+            }
+        }
+
+        if (node.Method.Name == "Contains" && node.Object is not null && node.Arguments.Count == 1)
+        {
+            if (node.Arguments[0] is MemberExpression me && IsEntityProperty(me))
+            {
+                member = me;
+                valuesExpr = node.Object;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /// <summary>
     /// Gets the quoted column name for the specified member expression.
     /// </summary>
@@ -489,6 +539,27 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
         var right = paramSql;
 
         _sql.Append($"{left} LIKE {right} ESCAPE '\\'");
+    }
+
+    private void AppendInClause(MemberExpression memberExpr, Expression valuesExpr)
+    {
+        var column = GetColumnNameForMember(memberExpr);
+        var rawValues = EvaluateExpression(valuesExpr) ?? throw new InvalidOperationException("IN values cannot be null.");
+        if (rawValues is string)
+            throw new NotSupportedException("String is not supported for IN; use a collection instead.");
+
+        if (rawValues is not IEnumerable enumerable)
+            throw new NotSupportedException("IN operator requires an IEnumerable of values.");
+
+        var list = enumerable.Cast<object?>().ToList();
+        if (list.Count == 0)
+        {
+            _sql.Append("1=0");
+            return;
+        }
+
+        var paramSql = AddParameter(list);
+        _sql.Append($"{column} IN {paramSql}");
     }
 
     /// <summary>

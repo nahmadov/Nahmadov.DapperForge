@@ -152,6 +152,20 @@ public class PredicateVisitorTests
         Assert.Equal("%a\\%b%", dict["p0"]);
     }
 
+    [Fact]
+    public void Translates_ListContains_To_In_Clause()
+    {
+        var ids = new[] { 1, 3, 5 };
+
+        var (sql, parameters) = Translate(u => ids.Contains(u.Id));
+
+        Assert.Equal("[Id] IN @p0", sql);
+        var dict = Assert.IsType<Dictionary<string, object>>(parameters);
+        Assert.True(dict.TryGetValue("p0", out var value));
+        var list = Assert.IsAssignableFrom<IEnumerable<int>>(value);
+        Assert.Equal(ids, list);
+    }
+
     private static (string Sql, IDictionary<string, object> Parameters) Translate(Expression<Func<UserEntity, bool>> predicate)
     {
         var mapping = EntityMappingCache<UserEntity>.Mapping;

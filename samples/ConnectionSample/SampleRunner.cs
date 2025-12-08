@@ -92,7 +92,7 @@ public class SampleRunner(AppDapperDbContext db)
     {
         Console.WriteLine("\nQuery examples using PredicateVisitor:");
 
-        var active = await _db.Customers.WhereAsync(c => c.IsActive);
+        var active = await _db.Customers.WhereAsync(c => (c.IsActive || c.Id > 0) && true);
         Console.WriteLine($"Active customers (boolean projection): {active.Count()}");
 
         var inactiveOrMissingEmail = await _db.Customers.WhereAsync(c => !c.IsActive || c.Email == null);
@@ -109,6 +109,10 @@ public class SampleRunner(AppDapperDbContext db)
 
         var firstAda = await _db.Customers.FirstOrDefaultAsync(c => c.Name == "Ada Lovelace", ignoreCase: true);
         Console.WriteLine($"FirstOrDefault for Ada Lovelace: {(firstAda is null ? "not found" : $"found id {firstAda.Id}")}");
+
+        var idList = active.Select(c => c.Id).Take(2).ToArray();
+        var inList = await _db.Customers.WhereAsync(c => idList.Contains(c.Id));
+        Console.WriteLine($"Customers with ids IN ({string.Join(", ", idList)}): {inList.Count()}");
     }
 
     private async Task RunCrudExamplesAsync(int customerId, int ticketId)
