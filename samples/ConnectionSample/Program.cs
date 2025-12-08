@@ -1,41 +1,44 @@
-﻿using ConnectionSample;
+using ConnectionSample;
 
 using DapperToolkit.Core.Extensions;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-
+using DapperToolkit.Oracle.Extensions;
 using DapperToolkit.SqlServer.Extensions;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 
 var host = Host.CreateDefaultBuilder(args)
     .ConfigureAppConfiguration((context, config) =>
     {
-            // Əsas hissə budur 🔽
-            config.AddUserSecrets<Program>();
+        config.AddUserSecrets<Program>();
     })
     .ConfigureServices((ctx, services) =>
     {
-        var connStr = ctx.Configuration.GetSection("ConnectionSample")["ConnectionString"];
+        // Expect user secrets:
+        // FullSample:Provider = SqlServer (default) or Oracle
+        // FullSample:SqlServerConnectionString or FullSample:OracleConnectionString
+        var sampleSection = ctx.Configuration.GetSection("FullSample");
+        var provider = sampleSection["Provider"] ?? "SqlServer";
+
         services.AddDapperDbContext<AppDapperDbContext>(options =>
         {
-            options.UseSqlServer(connStr ?? throw new InvalidOperationException("Connection string not found."));
+            if (string.Equals(provider, "Oracle", StringComparison.OrdinalIgnoreCase))
+            {
+                var oracleConn = sampleSection["OracleConnectionString"];
+                options.UseOracle(oracleConn ?? throw new InvalidOperationException("FullSample:OracleConnectionString is missing."));
+            }
+            else
+            {
+                var sqlConn = sampleSection["SqlServerConnectionString"] ?? sampleSection["ConnectionString"];
+                options.UseSqlServer(sqlConn ?? throw new InvalidOperationException("FullSample:SqlServerConnectionString is missing."));
+            }
         });
 
-        services.AddTransient<ReportService>();
+        services.AddTransient<SampleRunner>();
     })
     .Build();
 
-var report = host.Services.GetRequiredService<ReportService>();
+using var scope = host.Services.CreateScope();
+var runner = scope.ServiceProvider.GetRequiredService<SampleRunner>();
 
-// Insert a demo user
-await report.AddUserAsync("alice", isActive: true);
-
-var deleted = await report.DeleteOldLogsAsync();
-Console.WriteLine($"Deleted rows: {deleted}");
-
-// Fetch active users with case-insensitive starts-with filter
-var users = await report.GetActiveUsersAsync(startsWith: "a");
-foreach (var u in users)
-{
-    Console.WriteLine($"{u.Id} - {u.Name} (active: {u.IsActive})");
-}
+await runner.RunAsync();
