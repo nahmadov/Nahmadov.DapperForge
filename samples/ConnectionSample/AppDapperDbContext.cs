@@ -1,6 +1,6 @@
-using DapperToolkit.Core.Builders;
-using DapperToolkit.Core.Common;
-using DapperToolkit.Core.Context;
+using Nahmadov.DapperForge.Core.Builders;
+using Nahmadov.DapperForge.Core.Common;
+using Nahmadov.DapperForge.Core.Context;
 
 namespace ConnectionSample;
 

@@ -10,11 +10,10 @@
     <Authors>NahmadovN</Authors>
     <Version>1.0.0</Version>
 
-
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <RepositoryType>git</RepositoryType>
-    <RepositoryUrl>https://github.com/nahmadov/DapperToolkit</RepositoryUrl>
-    <PackageProjectUrl>https://github.com/nahmadov/DapperToolkit</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/nahmadov/Nahmadov.DapperForge</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/nahmadov/Nahmadov.DapperForge</PackageProjectUrl>
 
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>

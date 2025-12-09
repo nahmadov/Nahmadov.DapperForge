@@ -1,4 +1,4 @@
-# DapperToolkit v1
+# Nahmadov.DapperForge v1
 
 Lightweight Dapper-based data access with an EF-style surface (`DapperDbContext` + `DapperSet<TEntity>`) and fluent model building. This doc is for maintainers and consumers of v1.
 
@@ -100,4 +100,4 @@ Key coverage:
 ---
 
 ## Versioning
-This document and code reflect **Version 1** of DapperToolkit.
+This document and code reflect **Version 1** of Nahmadov.DapperForge.

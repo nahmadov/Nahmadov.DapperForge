@@ -1,8 +1,8 @@
 using ConnectionSample;
 
-using DapperToolkit.Core.Extensions;
-using DapperToolkit.Oracle.Extensions;
-using DapperToolkit.SqlServer.Extensions;
+using Nahmadov.DapperForge.Core.Extensions;
+using Nahmadov.DapperForge.Oracle.Extensions;
+using Nahmadov.DapperForge.SqlServer.Extensions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;

@@ -8,7 +8,7 @@ public class SampleRunner(AppDapperDbContext db)
 
     public async Task RunAsync()
     {
-        Console.WriteLine("=== DapperToolkit full-feature sample ===");
+        Console.WriteLine("=== Nahmadov.DapperForge full-feature sample ===");
         var (adaId, graceId) = await SeedCustomersAsync();
         var ticketId = await SeedTicketAsync(adaId);
 
