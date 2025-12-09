@@ -3,6 +3,7 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <UserSecretsId>013accd3-8d1f-4876-9118-11c15e6f4658</UserSecretsId>
+    <IsPackable>false</IsPackable>
   </PropertyGroup>
 
   <ItemGroup>

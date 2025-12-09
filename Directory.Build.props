@@ -5,8 +5,33 @@
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+
+    <Company>Nahmadov</Company>
+    <Authors>NahmadovN</Authors>
+    <Version>1.0.0</Version>
+
+
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryType>git</RepositoryType>
+    <RepositoryUrl>https://github.com/nahmadov/DapperToolkit</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/nahmadov/DapperToolkit</PackageProjectUrl>
+
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)'=='Release' and '$(IsPackable)'=='true'">
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+  </PropertyGroup>
+
   <PropertyGroup>
     <!-- <NoWarn>1591</NoWarn> Remove this to turn on warnings for missing XML Comments -->
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)README.md" Pack="true" PackagePath="\" Visible="false" />
+  </ItemGroup>
 </Project>
