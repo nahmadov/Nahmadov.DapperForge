@@ -5,6 +5,7 @@ using System.Reflection;
 using Dapper;
 
 using Nahmadov.DapperForge.Core.Builders;
+using Nahmadov.DapperForge.Core.Exceptions;
 using Nahmadov.DapperForge.Core.Mapping;
 using Nahmadov.DapperForge.Core.Validation;
 
@@ -49,15 +50,16 @@ public sealed class DapperSet<TEntity> where TEntity : class
     {
         if (_mapping.KeyProperties.Count == 0)
         {
-            throw new InvalidOperationException(
-                $"Entity '{typeof(TEntity).Name}' has no key and does not support FindAsync.");
+            throw new DapperConfigurationException(
+                typeof(TEntity).Name,
+                "Entity has no key and does not support FindAsync.");
         }
 
         if (string.IsNullOrWhiteSpace(_generator.SelectByIdSql))
         {
-            throw new InvalidOperationException(
-                $"FindAsync is not configured for entity '{typeof(TEntity).Name}'. " +
-                "Ensure the entity has a key and a proper mapping.");
+            throw new DapperConfigurationException(
+                typeof(TEntity).Name,
+                "FindAsync is not configured. Ensure the entity has a key and a proper mapping.");
         }
 
         var param = BuildKeyParameters(key);
@@ -110,8 +112,9 @@ public sealed class DapperSet<TEntity> where TEntity : class
         EntityValidator<TEntity>.ValidateForInsert(entity, _mapping);
         if (string.IsNullOrWhiteSpace(_generator.InsertSql))
         {
-            throw new InvalidOperationException(
-                $"Insert SQL is not configured for entity '{typeof(TEntity).Name}'.");
+            throw new DapperConfigurationException(
+                typeof(TEntity).Name,
+                "Insert SQL is not configured.");
         }
 
         return _context.ExecuteAsync(_generator.InsertSql, entity);
@@ -127,16 +130,15 @@ public sealed class DapperSet<TEntity> where TEntity : class
         EntityValidator<TEntity>.ValidateForUpdate(entity, _mapping);
         if (string.IsNullOrWhiteSpace(_generator.UpdateSql))
         {
-            throw new InvalidOperationException(
-                $"Update SQL is not configured for entity '{typeof(TEntity).Name}'.");
+            throw new DapperConfigurationException(
+                typeof(TEntity).Name,
+                "Update SQL is not configured.");
         }
 
         var affected = await _context.ExecuteAsync(_generator.UpdateSql, entity);
         if (affected == 0)
         {
-            throw new DBConcurrencyException(
-                $"Update failed for entity '{typeof(TEntity).Name}': no rows were affected. " +
-                "The entity may have been modified or deleted by another transaction.");
+            throw new DapperConcurrencyException(OperationType.Update, typeof(TEntity).Name);
         }
 
         return affected;
@@ -151,16 +153,15 @@ public sealed class DapperSet<TEntity> where TEntity : class
         EnsureCanMutate();
         if (string.IsNullOrWhiteSpace(_generator.DeleteByIdSql))
         {
-            throw new InvalidOperationException(
-                $"Delete SQL is not configured for entity '{typeof(TEntity).Name}'.");
+            throw new DapperConfigurationException(
+                typeof(TEntity).Name,
+                "Delete SQL is not configured.");
         }
 
         var affected = await _context.ExecuteAsync(_generator.DeleteByIdSql, entity);
         if (affected == 0)
         {
-            throw new DBConcurrencyException(
-                $"Delete failed for entity '{typeof(TEntity).Name}': no rows were affected. " +
-                "The entity may have been modified or deleted by another transaction.");
+            throw new DapperConcurrencyException(OperationType.Delete, typeof(TEntity).Name);
         }
 
         return affected;
@@ -176,14 +177,16 @@ public sealed class DapperSet<TEntity> where TEntity : class
 
         if (_mapping.KeyProperties.Count == 0)
         {
-            throw new InvalidOperationException(
-                $"Entity '{typeof(TEntity).Name}' has no key and cannot be deleted by id.");
+            throw new DapperConfigurationException(
+                typeof(TEntity).Name,
+                "Entity has no key and cannot be deleted by id.");
         }
 
         if (string.IsNullOrWhiteSpace(_generator.DeleteByIdSql))
         {
-            throw new InvalidOperationException(
-                $"Delete SQL is not configured for entity '{typeof(TEntity).Name}'.");
+            throw new DapperConfigurationException(
+                typeof(TEntity).Name,
+                "Delete SQL is not configured.");
         }
 
         var param = BuildKeyParameters(key);
@@ -191,9 +194,7 @@ public sealed class DapperSet<TEntity> where TEntity : class
         var affected = await _context.ExecuteAsync(_generator.DeleteByIdSql, param);
         if (affected == 0)
         {
-            throw new DBConcurrencyException(
-                $"Delete failed for entity '{typeof(TEntity).Name}': no rows were affected. " +
-                "The entity may have been modified or deleted by another transaction.");
+            throw new DapperConcurrencyException(OperationType.Delete, typeof(TEntity).Name);
         }
 
         return affected;

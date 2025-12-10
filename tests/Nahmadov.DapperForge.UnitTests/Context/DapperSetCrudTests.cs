@@ -191,7 +191,7 @@ public class DapperSetCrudTests
 
         var user = new User { Name = "", Email = "john@example.com" }; // Empty name (required)
 
-        await Assert.ThrowsAsync<System.ComponentModel.DataAnnotations.ValidationException>(async () =>
+        await Assert.ThrowsAsync<Nahmadov.DapperForge.Core.Exceptions.DapperValidationException>(async () =>
         {
             await set.InsertAsync(user);
         });
@@ -209,7 +209,7 @@ public class DapperSetCrudTests
             Email = "john@example.com"
         };
 
-        await Assert.ThrowsAsync<System.ComponentModel.DataAnnotations.ValidationException>(async () =>
+        await Assert.ThrowsAsync<Nahmadov.DapperForge.Core.Exceptions.DapperValidationException>(async () =>
         {
             await set.InsertAsync(user);
         });
@@ -243,7 +243,7 @@ public class DapperSetCrudTests
 
         var user = new User { Id = 1, Name = "", Email = "jane@example.com" }; // Empty name (required)
 
-        await Assert.ThrowsAsync<System.ComponentModel.DataAnnotations.ValidationException>(async () =>
+        await Assert.ThrowsAsync<Nahmadov.DapperForge.Core.Exceptions.DapperValidationException>(async () =>
         {
             await set.UpdateAsync(user);
         });

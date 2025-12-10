@@ -1,5 +1,4 @@
-using System.ComponentModel.DataAnnotations;
-
+using Nahmadov.DapperForge.Core.Exceptions;
 using Nahmadov.DapperForge.Core.Mapping;
 
 namespace Nahmadov.DapperForge.Core.Validation;
@@ -38,8 +37,8 @@ internal static class EntityValidator<TEntity> where TEntity : class
 
         if (mapping.IsReadOnly)
         {
-            throw new InvalidOperationException(
-                $"Entity '{mapping.EntityType.Name}' is marked as ReadOnly and cannot be modified.");
+            var operationType = isInsert ? OperationType.Insert : OperationType.Update;
+            throw new DapperReadOnlyException(operationType, mapping.EntityType.Name);
         }
 
         var errors = new List<string>();
@@ -85,11 +84,7 @@ internal static class EntityValidator<TEntity> where TEntity : class
 
         if (errors.Count > 0)
         {
-            var message =
-                $"Validation failed for entity '{typeof(TEntity).Name}':{Environment.NewLine} - " +
-                string.Join(Environment.NewLine + " - ", errors);
-
-            throw new ValidationException(message);
+            throw new DapperValidationException(typeof(TEntity).Name, errors);
         }
     }
 }

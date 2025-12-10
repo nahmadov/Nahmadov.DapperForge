@@ -82,7 +82,7 @@ public class EntityValidatorTests
         var mapping = BuildUserMapping();
         var user = new User { Name = null!, Email = "test@example.com" };
 
-        var exception = Assert.Throws<System.ComponentModel.DataAnnotations.ValidationException>(() =>
+        var exception = Assert.Throws<Core.Exceptions.DapperValidationException>(() =>
         {
             EntityValidator<User>.ValidateForInsert(user, mapping);
         });
@@ -97,7 +97,7 @@ public class EntityValidatorTests
         var mapping = BuildUserMapping();
         var user = new User { Name = "", Email = "test@example.com" };
 
-        var exception = Assert.Throws<System.ComponentModel.DataAnnotations.ValidationException>(() =>
+        var exception = Assert.Throws<Nahmadov.DapperForge.Core.Exceptions.DapperValidationException>(() =>
         {
             EntityValidator<User>.ValidateForInsert(user, mapping);
         });
@@ -112,7 +112,7 @@ public class EntityValidatorTests
         var mapping = BuildUserMapping();
         var user = new User { Name = "   ", Email = "test@example.com" };
 
-        var exception = Assert.Throws<System.ComponentModel.DataAnnotations.ValidationException>(() =>
+        var exception = Assert.Throws<Nahmadov.DapperForge.Core.Exceptions.DapperValidationException>(() =>
         {
             EntityValidator<User>.ValidateForInsert(user, mapping);
         });
@@ -141,7 +141,7 @@ public class EntityValidatorTests
         var longName = new string('a', 101);
         var user = new User { Name = longName };
 
-        var exception = Assert.Throws<System.ComponentModel.DataAnnotations.ValidationException>(() =>
+        var exception = Assert.Throws<Nahmadov.DapperForge.Core.Exceptions.DapperValidationException>(() =>
         {
             EntityValidator<User>.ValidateForInsert(user, mapping);
         });
@@ -156,7 +156,7 @@ public class EntityValidatorTests
         var mapping = BuildUserMapping();
         var user = new User { Name = "John", Username = "ab" }; // Username has MinLength=3
 
-        var exception = Assert.Throws<System.ComponentModel.DataAnnotations.ValidationException>(() =>
+        var exception = Assert.Throws<Nahmadov.DapperForge.Core.Exceptions.DapperValidationException>(() =>
         {
             EntityValidator<User>.ValidateForInsert(user, mapping);
         });
@@ -220,7 +220,7 @@ public class EntityValidatorTests
         var mapping = BuildUserMapping();
         var user = new User { Id = 1, Name = null!, Email = "test@example.com" };
 
-        var exception = Assert.Throws<System.ComponentModel.DataAnnotations.ValidationException>(() =>
+        var exception = Assert.Throws<Nahmadov.DapperForge.Core.Exceptions.DapperValidationException>(() =>
         {
             EntityValidator<User>.ValidateForUpdate(user, mapping);
         });
@@ -235,7 +235,7 @@ public class EntityValidatorTests
         var longName = new string('a', 101);
         var user = new User { Id = 1, Name = longName };
 
-        var exception = Assert.Throws<System.ComponentModel.DataAnnotations.ValidationException>(() =>
+        var exception = Assert.Throws<Nahmadov.DapperForge.Core.Exceptions.DapperValidationException>(() =>
         {
             EntityValidator<User>.ValidateForUpdate(user, mapping);
         });
@@ -263,7 +263,7 @@ public class EntityValidatorTests
         var mapping = BuildReadOnlyMapping();
         var customer = new ReadOnlyCustomer { Name = "Test" };
 
-        var exception = Assert.Throws<InvalidOperationException>(() =>
+        var exception = Assert.Throws<Nahmadov.DapperForge.Core.Exceptions.DapperReadOnlyException>(() =>
         {
             EntityValidator<ReadOnlyCustomer>.ValidateForInsert(customer, mapping);
         });
@@ -277,7 +277,7 @@ public class EntityValidatorTests
         var mapping = BuildReadOnlyMapping();
         var customer = new ReadOnlyCustomer { Id = 1, Name = "Test" };
 
-        var exception = Assert.Throws<InvalidOperationException>(() =>
+        var exception = Assert.Throws<Nahmadov.DapperForge.Core.Exceptions.DapperReadOnlyException>(() =>
         {
             EntityValidator<ReadOnlyCustomer>.ValidateForUpdate(customer, mapping);
         });
