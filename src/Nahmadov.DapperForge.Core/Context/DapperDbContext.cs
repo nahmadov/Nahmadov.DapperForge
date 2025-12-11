@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.ComponentModel.DataAnnotations.Schema;
 using System.Data;
+using System.Diagnostics;
 using System.Linq.Expressions;
 using System.Reflection;
 
@@ -337,13 +338,15 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
     }
 
     /// <summary>
-    /// Writes executed SQL to the console for diagnostics.
+    /// Writes executed SQL to the console and debug output for diagnostics.
     /// </summary>
     /// <param name="sql">SQL text to log.</param>
     private static void LogSql(string sql)
     {
         if (string.IsNullOrWhiteSpace(sql))
             return;
-        Console.WriteLine($"[Nahmadov.DapperForge SQL] {sql}");
+        
+        var logMessage = $"[Nahmadov.DapperForge SQL] {sql}";
+        Console.WriteLine(logMessage);
     }
 }

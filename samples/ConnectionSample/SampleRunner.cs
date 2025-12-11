@@ -15,6 +15,7 @@ public class SampleRunner(AppDapperDbContext db)
         await ShowWhereExamplesAsync();
         await RunCrudExamplesAsync(graceId, ticketId);
         await ShowReadOnlyExampleAsync();
+        await ShowDapperQueryableExamplesAsync();
         await ShowTransactionExamplesAsync();
     }
 
@@ -170,6 +171,93 @@ public class SampleRunner(AppDapperDbContext db)
         }
     }
 
+    private async Task ShowDapperQueryableExamplesAsync()
+    {
+        Console.WriteLine("\n=== DapperQueryable Examples ===");
+
+        // Example 1: Using Where with OrderBy
+        Console.WriteLine("\nExample 1: Where with OrderBy");
+        var activeOrderedByName = await _db.Customers
+            .Query()
+            .Where(c => c.IsActive)
+            .OrderBy(c => c.Name)
+            .ToListAsync();
+        Console.WriteLine($"Active customers ordered by name: {activeOrderedByName.Count()} found");
+        foreach (var customer in activeOrderedByName)
+        {
+            Console.WriteLine($"  - {customer.Name} ({customer.Id})");
+        }
+
+        // Example 2: Using Where with OrderByDescending
+        Console.WriteLine("\nExample 2: Where with OrderByDescending");
+        var sortedByCreatedDesc = await _db.Customers
+            .Query()
+            .Where(c => c.IsActive)
+            .OrderByDescending(c => c.CreatedAt)
+            .ToListAsync();
+        Console.WriteLine($"Active customers ordered by creation date (descending): {sortedByCreatedDesc.Count()} found");
+
+        // Example 3: Using Skip and Take for pagination
+        Console.WriteLine("\nExample 3: Skip and Take for Pagination");
+        var page1 = await _db.Customers
+            .Query()
+            .Where(c => c.IsActive)
+            .OrderBy(c => c.Id)
+            .Skip(0)
+            .Take(2)
+            .ToListAsync();
+        Console.WriteLine($"Page 1 (skip 0, take 2): {page1.Count()} customers");
+        foreach (var customer in page1)
+        {
+            Console.WriteLine($"  - {customer.Name} (ID: {customer.Id})");
+        }
+
+        var page2 = await _db.Customers
+            .Query()
+            .Where(c => c.IsActive)
+            .OrderBy(c => c.Id)
+            .Skip(2)
+            .Take(2)
+            .ToListAsync();
+        Console.WriteLine($"Page 2 (skip 2, take 2): {page2.Count()} customers");
+
+        // Example 4: Complex query with multiple chains
+        Console.WriteLine("\nExample 4: Complex Query Chain");
+        var complexQuery = await _db.Customers
+            .Query()
+            .Where(c => c.IsActive && c.City != null)
+            .OrderByDescending(c => c.Name)
+            .Skip(0)
+            .Take(5)
+            .ToListAsync();
+        Console.WriteLine($"Complex query result: {complexQuery.Count()} customers found");
+
+        // Example 5: Using FirstOrDefaultAsync with DapperQueryable
+        Console.WriteLine("\nExample 5: FirstOrDefaultAsync with Queryable");
+        var firstActiveByCity = await _db.Customers
+            .Query()
+            .Where(c => c.IsActive)
+            .OrderBy(c => c.City)
+            .FirstOrDefaultAsync();
+        if (firstActiveByCity is not null)
+        {
+            Console.WriteLine($"First active customer by city: {firstActiveByCity.Name} from {firstActiveByCity.City}");
+        }
+
+        // Example 6: Combining with LINQ operations
+        Console.WriteLine("\nExample 6: DapperQueryable with LINQ Post-Processing");
+        var allActiveCustomers = await _db.Customers
+            .Query()
+            .Where(c => c.IsActive)
+            .ToListAsync();
+        var emailDomains = allActiveCustomers
+            .Where(c => c.Email != null)
+            .Select(c => c.Email!.Split('@')[1])
+            .Distinct()
+            .ToList();
+        Console.WriteLine($"Email domains of active customers: {string.Join(", ", emailDomains)}");
+    }
+
     private async Task ShowTransactionExamplesAsync()
     {
         Console.WriteLine("\n=== Transaction Examples ===\n");
@@ -204,7 +292,7 @@ public class SampleRunner(AppDapperDbContext db)
                 CreatedAt = DateTime.UtcNow
             };
 
-            var customerId = await _db.Customers.InsertAndGetIdAsync<int>(newCustomer);
+            var customerId = await _db.Customers.InsertAndGetIdAsync<int>(newCustomer, transaction);
 
             // Commit the transaction
             transaction.Commit();
@@ -235,7 +323,7 @@ public class SampleRunner(AppDapperDbContext db)
                 CreatedAt = DateTime.UtcNow
             };
 
-            var customerId = await _db.Customers.InsertAndGetIdAsync<int>(customer);
+            var customerId = await _db.Customers.InsertAndGetIdAsync<int>(customer, transaction);
             Console.WriteLine($"  - Inserted customer ID {customerId}");
 
             // Insert related ticket
@@ -248,7 +336,7 @@ public class SampleRunner(AppDapperDbContext db)
                 OpenedOn = DateTime.UtcNow
             };
 
-            var ticketId = await _db.Tickets.InsertAndGetIdAsync<int>(ticket);
+            var ticketId = await _db.Tickets.InsertAndGetIdAsync<int>(ticket, transaction);
             Console.WriteLine($"  - Inserted ticket ID {ticketId}");
 
             // Commit both operations together
@@ -280,7 +368,7 @@ public class SampleRunner(AppDapperDbContext db)
                 CreatedAt = DateTime.UtcNow
             };
 
-            var customerId = await _db.Customers.InsertAndGetIdAsync<int>(invalidCustomer);
+            var customerId = await _db.Customers.InsertAndGetIdAsync<int>(invalidCustomer, transaction);
             transaction.Commit();
             Console.WriteLine("✗ Should not reach here - validation should have failed.");
         }
@@ -320,7 +408,7 @@ public class SampleRunner(AppDapperDbContext db)
                     CreatedAt = DateTime.UtcNow
                 };
 
-                var customerId = await _db.Customers.InsertAndGetIdAsync<int>(duplicateCustomer);
+                var customerId = await _db.Customers.InsertAndGetIdAsync<int>(duplicateCustomer, transaction);
                 transaction.Commit();
                 Console.WriteLine("✗ Should not reach here - duplicate constraint should have failed.");
             }

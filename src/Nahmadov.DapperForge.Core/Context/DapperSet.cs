@@ -114,7 +114,8 @@ public sealed class DapperSet<TEntity> where TEntity : class
     /// Inserts a new entity and returns affected row count.
     /// </summary>
     /// <param name="entity">Entity to insert.</param>
-    public Task<int> InsertAsync(TEntity entity)
+    /// <param name="transaction">Optional transaction for the operation.</param>
+    public Task<int> InsertAsync(TEntity entity, IDbTransaction? transaction = null)
     {
         EnsureCanMutate();
         EntityValidator<TEntity>.ValidateForInsert(entity, _mapping);
@@ -125,14 +126,15 @@ public sealed class DapperSet<TEntity> where TEntity : class
                 "Insert SQL is not configured.");
         }
 
-        return _context.ExecuteAsync(_generator.InsertSql, entity);
+        return _context.ExecuteAsync(_generator.InsertSql, entity, transaction);
     }
 
     /// <summary>
     /// Updates an existing entity and throws if no rows are affected.
     /// </summary>
     /// <param name="entity">Entity to update.</param>
-    public async Task<int> UpdateAsync(TEntity entity)
+    /// <param name="transaction">Optional transaction for the operation.</param>
+    public async Task<int> UpdateAsync(TEntity entity, IDbTransaction? transaction = null)
     {
         EnsureCanMutate();
         EntityValidator<TEntity>.ValidateForUpdate(entity, _mapping);
@@ -143,7 +145,7 @@ public sealed class DapperSet<TEntity> where TEntity : class
                 "Update SQL is not configured.");
         }
 
-        var affected = await _context.ExecuteAsync(_generator.UpdateSql, entity);
+        var affected = await _context.ExecuteAsync(_generator.UpdateSql, entity, transaction);
         if (affected == 0)
         {
             throw new DapperConcurrencyException(OperationType.Update, typeof(TEntity).Name);
@@ -156,7 +158,8 @@ public sealed class DapperSet<TEntity> where TEntity : class
     /// Deletes an entity using its key values.
     /// </summary>
     /// <param name="entity">Entity to delete.</param>
-    public async Task<int> DeleteAsync(TEntity entity)
+    /// <param name="transaction">Optional transaction for the operation.</param>
+    public async Task<int> DeleteAsync(TEntity entity, IDbTransaction? transaction = null)
     {
         EnsureCanMutate();
         if (string.IsNullOrWhiteSpace(_generator.DeleteByIdSql))
@@ -166,7 +169,7 @@ public sealed class DapperSet<TEntity> where TEntity : class
                 "Delete SQL is not configured.");
         }
 
-        var affected = await _context.ExecuteAsync(_generator.DeleteByIdSql, entity);
+        var affected = await _context.ExecuteAsync(_generator.DeleteByIdSql, entity, transaction);
         if (affected == 0)
         {
             throw new DapperConcurrencyException(OperationType.Delete, typeof(TEntity).Name);
@@ -179,7 +182,8 @@ public sealed class DapperSet<TEntity> where TEntity : class
     /// Deletes an entity by key value.
     /// </summary>
     /// <param name="key">Key value or composite key object.</param>
-    public async Task<int> DeleteByIdAsync(object key)
+    /// <param name="transaction">Optional transaction for the operation.</param>
+    public async Task<int> DeleteByIdAsync(object key, IDbTransaction? transaction = null)
     {
         EnsureCanMutate();
 
@@ -199,7 +203,7 @@ public sealed class DapperSet<TEntity> where TEntity : class
 
         var param = BuildKeyParameters(key);
 
-        var affected = await _context.ExecuteAsync(_generator.DeleteByIdSql, param);
+        var affected = await _context.ExecuteAsync(_generator.DeleteByIdSql, param, transaction);
         if (affected == 0)
         {
             throw new DapperConcurrencyException(OperationType.Delete, typeof(TEntity).Name);
@@ -213,7 +217,8 @@ public sealed class DapperSet<TEntity> where TEntity : class
     /// </summary>
     /// <typeparam name="TKey">Key value type.</typeparam>
     /// <param name="entity">Entity to insert.</param>
-    public async Task<TKey> InsertAndGetIdAsync<TKey>(TEntity entity)
+    /// <param name="transaction">Optional transaction for the operation.</param>
+    public async Task<TKey> InsertAndGetIdAsync<TKey>(TEntity entity, IDbTransaction? transaction = null)
     {
         EnsureCanMutate();
         EntityValidator<TEntity>.ValidateForInsert(entity, _mapping);
@@ -228,11 +233,11 @@ public sealed class DapperSet<TEntity> where TEntity : class
         TKey? id;
         if (string.Equals(_generator.DialectName, "Oracle", StringComparison.OrdinalIgnoreCase))
         {
-            id = await ExecuteOracleInsertReturningAsync<TKey>(entity);
+            id = await ExecuteOracleInsertReturningAsync<TKey>(entity, transaction);
         }
         else
         {
-            id = await _context.QueryFirstOrDefaultAsync<TKey>(_generator.InsertReturningIdSql, entity);
+            id = await _context.QueryFirstOrDefaultAsync<TKey>(_generator.InsertReturningIdSql, entity, transaction);
         }
 
         if (id == null || EqualityComparer<TKey>.Default.Equals(id, default!))
@@ -338,7 +343,8 @@ public sealed class DapperSet<TEntity> where TEntity : class
     /// </summary>
     /// <typeparam name="TKey">Key type to return.</typeparam>
     /// <param name="entity">Entity being inserted.</param>
-    private async Task<TKey> ExecuteOracleInsertReturningAsync<TKey>(TEntity entity)
+    /// <param name="transaction">Optional transaction for the operation.</param>
+    private async Task<TKey> ExecuteOracleInsertReturningAsync<TKey>(TEntity entity, IDbTransaction? transaction = null)
     {
         var keyProp = _generator.KeyProperty
             ?? throw new InvalidOperationException($"Entity '{typeof(TEntity).Name}' has no key property.");
@@ -346,7 +352,7 @@ public sealed class DapperSet<TEntity> where TEntity : class
         var parameters = new DynamicParameters(entity);
         parameters.Add(keyProp.Name, dbType: DbType.Object, direction: ParameterDirection.Output);
 
-        await _context.ExecuteAsync(_generator.InsertReturningIdSql!, parameters);
+        await _context.ExecuteAsync(_generator.InsertReturningIdSql!, parameters, transaction);
 
         return parameters.Get<TKey>(keyProp.Name);
     }
