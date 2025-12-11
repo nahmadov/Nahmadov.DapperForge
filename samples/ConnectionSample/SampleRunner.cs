@@ -15,6 +15,7 @@ public class SampleRunner(AppDapperDbContext db)
         await ShowWhereExamplesAsync();
         await RunCrudExamplesAsync(graceId, ticketId);
         await ShowReadOnlyExampleAsync();
+        await ShowTransactionExamplesAsync();
     }
 
     private async Task<(int AdaId, int GraceId)> SeedCustomersAsync()
@@ -166,6 +167,173 @@ public class SampleRunner(AppDapperDbContext db)
         if (!auditEntries.Any())
         {
             Console.WriteLine("No audit logs present yet. Insert rows into dbo.AuditLogs to see read-only queries in action.");
+        }
+    }
+
+    private async Task ShowTransactionExamplesAsync()
+    {
+        Console.WriteLine("\n=== Transaction Examples ===\n");
+
+        // Example 1: Simple insert with transaction
+        await Example1_SimpleTransactionAsync();
+
+        // Example 2: Multiple operations in transaction
+        await Example2_MultipleOperationsAsync();
+
+        // Example 3: Transaction rollback on validation error
+        await Example3_RollbackOnValidationAsync();
+
+        // Example 4: Transaction rollback on constraint error
+        await Example4_RollbackOnErrorAsync();
+    }
+
+    private async Task Example1_SimpleTransactionAsync()
+    {
+        Console.WriteLine("Example 1: Simple Transaction");
+        Console.WriteLine("Creating a new customer in a transaction...");
+
+        using var transaction = await _db.BeginTransactionAsync();
+        try
+        {
+            var newCustomer = new Customer
+            {
+                Name = "Transaction Test Customer",
+                Email = "tx-test@contoso.com",
+                City = "San Francisco",
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            var customerId = await _db.Customers.InsertAndGetIdAsync<int>(newCustomer);
+
+            // Commit the transaction
+            transaction.Commit();
+            Console.WriteLine($"✓ Customer inserted with ID {customerId} and committed.");
+        }
+        catch (Exception ex)
+        {
+            transaction.Rollback();
+            Console.WriteLine($"✗ Error: {ex.Message}. Transaction rolled back.");
+        }
+    }
+
+    private async Task Example2_MultipleOperationsAsync()
+    {
+        Console.WriteLine("\nExample 2: Multiple Operations in Single Transaction");
+        Console.WriteLine("Creating customer with ticket in one transaction...");
+
+        using var transaction = await _db.BeginTransactionAsync();
+        try
+        {
+            // Insert customer
+            var customer = new Customer
+            {
+                Name = "Multi-Op Transaction Customer",
+                Email = "multi-op@contoso.com",
+                City = "Boston",
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            var customerId = await _db.Customers.InsertAndGetIdAsync<int>(customer);
+            Console.WriteLine($"  - Inserted customer ID {customerId}");
+
+            // Insert related ticket
+            var ticket = new SupportTicket
+            {
+                CustomerId = customerId,
+                Title = "Transaction Demo Ticket",
+                Description = "Created as part of multi-operation transaction example",
+                Status = "Open",
+                OpenedOn = DateTime.UtcNow
+            };
+
+            var ticketId = await _db.Tickets.InsertAndGetIdAsync<int>(ticket);
+            Console.WriteLine($"  - Inserted ticket ID {ticketId}");
+
+            // Commit both operations together
+            transaction.Commit();
+            Console.WriteLine("✓ Both operations committed in single transaction.");
+        }
+        catch (Exception ex)
+        {
+            transaction.Rollback();
+            Console.WriteLine($"✗ Error during multi-op: {ex.Message}. Both operations rolled back.");
+        }
+    }
+
+    private async Task Example3_RollbackOnValidationAsync()
+    {
+        Console.WriteLine("\nExample 3: Rollback on Validation Error");
+        Console.WriteLine("Attempting to insert customer with invalid data...");
+
+        using var transaction = await _db.BeginTransactionAsync();
+        try
+        {
+            // Create customer with empty name (will fail validation)
+            var invalidCustomer = new Customer
+            {
+                Name = string.Empty, // Invalid - Name is required
+                Email = "invalid@contoso.com",
+                City = "Portland",
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            var customerId = await _db.Customers.InsertAndGetIdAsync<int>(invalidCustomer);
+            transaction.Commit();
+            Console.WriteLine("✗ Should not reach here - validation should have failed.");
+        }
+        catch (Nahmadov.DapperForge.Core.Exceptions.DapperValidationException ex)
+        {
+            transaction.Rollback();
+            Console.WriteLine("✓ Validation error caught and transaction rolled back.");
+            Console.WriteLine($"  Validation errors: {string.Join(", ", ex.Errors)}");
+        }
+        catch (Exception ex)
+        {
+            transaction.Rollback();
+            Console.WriteLine($"✗ Unexpected error: {ex.Message}");
+        }
+    }
+
+    private async Task Example4_RollbackOnErrorAsync()
+    {
+        Console.WriteLine("\nExample 4: Rollback on Duplicate Data Error");
+        Console.WriteLine("Attempting to insert duplicate customer in transaction...");
+
+        // First, ensure a customer exists
+        var existingCustomer = await _db.Customers.FirstOrDefaultAsync(c => c.Name == "Ada Lovelace", ignoreCase: true);
+
+        if (existingCustomer is not null)
+        {
+            using var transaction = await _db.BeginTransactionAsync();
+            try
+            {
+                // Try to insert customer with same email (will fail on insert due to data constraints)
+                var duplicateCustomer = new Customer
+                {
+                    Name = "Different Name",
+                    Email = existingCustomer.Email, // Same email as existing
+                    City = "New York",
+                    IsActive = true,
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                var customerId = await _db.Customers.InsertAndGetIdAsync<int>(duplicateCustomer);
+                transaction.Commit();
+                Console.WriteLine("✗ Should not reach here - duplicate constraint should have failed.");
+            }
+            catch (Exception ex)
+            {
+                transaction.Rollback();
+                Console.WriteLine("✓ Error caught and transaction rolled back.");
+                Console.WriteLine($"  Error: {ex.Message}");
+            }
+        }
+        else
+        {
+            Console.WriteLine("Skipped: Ada Lovelace customer not found.");
         }
     }
 }
