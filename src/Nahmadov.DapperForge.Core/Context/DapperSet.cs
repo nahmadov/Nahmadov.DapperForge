@@ -6,6 +6,7 @@ using Dapper;
 
 using Nahmadov.DapperForge.Core.Builders;
 using Nahmadov.DapperForge.Core.Exceptions;
+using Nahmadov.DapperForge.Core.Interfaces;
 using Nahmadov.DapperForge.Core.Mapping;
 using Nahmadov.DapperForge.Core.Validation;
 
@@ -34,6 +35,13 @@ public sealed class DapperSet<TEntity> where TEntity : class
     }
 
     #region Query
+
+    /// <summary>
+    /// Creates a fluent query builder for chaining Where, OrderBy, Skip, Take operations.
+    /// </summary>
+    /// <returns>IDapperQueryable for building the query.</returns>
+    public IDapperQueryable<TEntity> Query()
+        => new DapperQueryable<TEntity>(_context, _generator, _mapping);
 
     /// <summary>
     /// Retrieves all rows for the entity.
