@@ -107,7 +107,7 @@ internal sealed class DapperQueryable<TEntity> : IDapperQueryable<TEntity> where
 
     public async Task<long> CountAsync()
     {
-        var baseSql = $"SELECT COUNT(*) FROM {_generator.TableName}";
+        var baseSql = $"SELECT COUNT(*) FROM {_generator.TableName} AS a";
         var parameters = GetParameters();
 
         if (_predicate is not null)
@@ -153,7 +153,7 @@ internal sealed class DapperQueryable<TEntity> : IDapperQueryable<TEntity> where
             {
                 var keyProp = _mapping.KeyProperties[0];
                 var keyMapping = _mapping.PropertyMappings.First(pm => pm.Property == keyProp);
-                var orderClause = _generator.Dialect.QuoteIdentifier(keyMapping.ColumnName);
+                var orderClause = $"a.{_generator.Dialect.QuoteIdentifier(keyMapping.ColumnName)}";
                 sql = $"{sql} ORDER BY {orderClause}";
             }
         }

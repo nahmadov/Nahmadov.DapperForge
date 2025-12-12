@@ -115,21 +115,22 @@ internal sealed class SqlGenerator<TEntity> where TEntity : class
     }
 
     /// <summary>
-    /// Builds a SELECT statement that projects all mapped properties.
+    /// Builds a SELECT statement that projects all mapped properties with table alias.
     /// </summary>
     /// <returns>Complete SELECT statement.</returns>
     private string BuildSelectAllSql()
     {
+        const string tableAlias = "a";
         var columnList = string.Join(
             ", ",
             _mapping.PropertyMappings.Select(pm =>
-                $"{_dialect.QuoteIdentifier(pm.ColumnName)} AS {_dialect.QuoteIdentifier(pm.Property.Name)}"));
+                $"{tableAlias}.{_dialect.QuoteIdentifier(pm.ColumnName)} AS {_dialect.QuoteIdentifier(pm.Property.Name)}"));
 
-        return $"SELECT {columnList} FROM {_fullTableName}";
+        return $"SELECT {columnList} FROM {_fullTableName} AS {tableAlias}";
     }
 
     /// <summary>
-    /// Builds a SELECT statement filtered by the configured key columns.
+    /// Builds a SELECT statement filtered by the configured key columns with table alias.
     /// </summary>
     /// <returns>SELECT by key SQL or an empty string if no key exists.</returns>
     private string BuildSelectByIdSql()
@@ -137,12 +138,13 @@ internal sealed class SqlGenerator<TEntity> where TEntity : class
         if (_keyColumns.Length == 0 || KeyPropertyName is null)
             return string.Empty;
 
+        const string tableAlias = "a";
         var predicates = _mapping.KeyProperties
             .Select(p =>
             {
                 var column = GetColumnNameForProperty(p);
                 var param = _dialect.FormatParameter(p.Name);
-                return $"{_dialect.QuoteIdentifier(column)} = {param}";
+                return $"{tableAlias}.{_dialect.QuoteIdentifier(column)} = {param}";
             });
 
         return $"{SelectAllSql} WHERE {string.Join(" AND ", predicates)}";

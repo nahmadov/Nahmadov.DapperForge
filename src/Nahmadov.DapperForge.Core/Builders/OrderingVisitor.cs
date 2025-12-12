@@ -124,7 +124,7 @@ public sealed class OrderingVisitor<TEntity> : ExpressionVisitor
     }
 
     /// <summary>
-    /// Appends a property column reference to the ORDER BY clause.
+    /// Appends a property column reference to the ORDER BY clause with table alias.
     /// </summary>
     /// <param name="propertyInfo">Property to append.</param>
     /// <param name="isDescending">Whether to sort descending.</param>
@@ -136,7 +136,7 @@ public sealed class OrderingVisitor<TEntity> : ExpressionVisitor
                 $"Property '{propertyInfo.Name}' of entity '{typeof(TEntity).Name}' is not mapped to a column.");
         }
 
-        _orderBy.Append(_dialect.QuoteIdentifier(mapping.ColumnName));
+        _orderBy.Append($"a.{_dialect.QuoteIdentifier(mapping.ColumnName)}");
         if (isDescending)
         {
             _orderBy.Append(" DESC");

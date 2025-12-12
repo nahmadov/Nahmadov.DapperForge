@@ -296,7 +296,7 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
         if (!_propertyLookup.TryGetValue(property, out var map))
             throw new InvalidOperationException($"No mapping found for property '{property.Name}'.");
 
-        var column = _dialect.QuoteIdentifier(map.ColumnName);
+        var column = $"a.{_dialect.QuoteIdentifier(map.ColumnName)}";
         var propType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
 
         if (propType == typeof(bool))
@@ -505,15 +505,15 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
     }
 
     /// <summary>
-    /// Gets the quoted column name for the specified member expression.
+    /// Gets the quoted column name with table alias for the specified member expression.
     /// </summary>
     /// <param name="node">Member expression referencing an entity property.</param>
-    /// <returns>Quoted column name.</returns>
+    /// <returns>Quoted column name with table alias (e.g., "a.[ColumnName]").</returns>
     private string GetColumnNameForMember(MemberExpression node)
     {
         var prop = (PropertyInfo)node.Member;
         if (_propertyLookup.TryGetValue(prop, out var map))
-            return _dialect.QuoteIdentifier(map.ColumnName);
+            return $"a.{_dialect.QuoteIdentifier(map.ColumnName)}";
 
         throw new InvalidOperationException($"No mapping found for property '{prop.Name}'.");
     }
