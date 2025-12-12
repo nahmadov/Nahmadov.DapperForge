@@ -64,7 +64,7 @@ public class PredicateVisitorComprehensiveTests
     {
         var (sql, parameters) = Translate(u => u.IsActive);
 
-        Assert.Equal("[IsActive] = 1", sql);
+        Assert.Equal("a.[IsActive] = 1", sql);
         Assert.Empty(parameters);
     }
 
@@ -73,7 +73,7 @@ public class PredicateVisitorComprehensiveTests
     {
         var (sql, parameters) = Translate(u => !u.IsActive);
 
-        Assert.Equal("[IsActive] = 0", sql);
+        Assert.Equal("a.[IsActive] = 0", sql);
         Assert.Empty(parameters);
     }
 

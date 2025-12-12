@@ -1,4 +1,5 @@
 using System.Linq.Expressions;
+using System.Reflection;
 
 using Nahmadov.DapperForge.Core.Builders;
 using Nahmadov.DapperForge.Core.Interfaces;
@@ -22,6 +23,7 @@ internal sealed class DapperQueryable<TEntity> : IDapperQueryable<TEntity> where
     private int _skipCount;
     private int _takeCount;
     private bool _ignoreCase;
+    private readonly List<(Type RelatedType, PropertyInfo NavigationProperty)> _includes = new();
 
     /// <summary>
     /// Initializes a new query builder for the given context.
@@ -75,11 +77,164 @@ internal sealed class DapperQueryable<TEntity> : IDapperQueryable<TEntity> where
         return this;
     }
 
+    public IDapperQueryable<TEntity> Include<TRelated>(Expression<Func<TEntity, TRelated?>> navigationSelector) where TRelated : class
+    {
+        ArgumentNullException.ThrowIfNull(navigationSelector);
+        if (navigationSelector.Body is MemberExpression member)
+        {
+            if (member.Member is PropertyInfo prop)
+            {
+                _includes.Add((typeof(TRelated), prop));
+            }
+        }
+        return this;
+    }
+
+    public IDapperQueryable<TEntity> Include<TRelated>(Expression<Func<TEntity, IEnumerable<TRelated>>> navigationSelector) where TRelated : class
+    {
+        ArgumentNullException.ThrowIfNull(navigationSelector);
+        if (navigationSelector.Body is MemberExpression member)
+        {
+            if (member.Member is PropertyInfo prop)
+            {
+                _includes.Add((typeof(TRelated), prop));
+            }
+        }
+        return this;
+    }
+
     public async Task<IEnumerable<TEntity>> ToListAsync()
     {
         var sql = BuildSql();
         var parameters = GetParameters();
-        return await _context.QueryAsync<TEntity>(sql, parameters);
+        var results = await _context.QueryAsync<TEntity>(sql, parameters);
+        var resultList = results.ToList();
+
+        // Load related entities if includes are specified
+        if (_includes.Count > 0)
+        {
+            await LoadIncludedEntitiesAsync(resultList);
+        }
+
+        return resultList;
+    }
+
+    private async Task LoadIncludedEntitiesAsync(List<TEntity> results)
+    {
+        if (results.Count == 0)
+            return;
+
+        foreach (var (relatedType, navProp) in _includes)
+        {
+            // Get the FK property that references this related entity
+            var fkMapping = _mapping.ForeignKeys.FirstOrDefault(fk => fk.NavigationProperty == navProp);
+            if (fkMapping is null)
+                continue;
+
+            // Get all the FK values from the main results
+            var fkProperty = _mapping.PropertyMappings.FirstOrDefault(pm => pm.ColumnName == fkMapping.ForeignKeyColumnName)?.Property;
+            if (fkProperty is null)
+                continue;
+
+            var fkValues = results
+                .Select(r => fkProperty.GetValue(r))
+                .Where(v => v is not null)
+                .Distinct()
+                .ToList();
+
+            if (fkValues.Count == 0)
+                continue;
+
+            // Load related entities
+            var relatedEntities = await LoadRelatedEntitiesAsync(relatedType, fkMapping, fkValues);
+
+            // Populate navigation properties
+            PopulateNavigationProperties(results, navProp, fkProperty, relatedEntities, fkMapping);
+        }
+    }
+
+    private async Task<Dictionary<object, object>> LoadRelatedEntitiesAsync(
+        Type relatedType,
+        ForeignKeyMapping fkMapping,
+        List<object?> fkValues)
+    {
+        // Build a query method dynamically using reflection
+        var queryMethod = _context.GetType()
+            .GetMethods(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance)
+            .FirstOrDefault(m => m.Name == "QueryAsync" && m.IsGenericMethodDefinition);
+
+        if (queryMethod is null)
+            return new Dictionary<object, object>();
+
+        var genericQueryMethod = queryMethod.MakeGenericMethod(relatedType);
+
+        // Build IN clause for FK values
+        var fkColumnName = fkMapping.ForeignKeyColumnName;
+        var tableName = fkMapping.PrincipalTableName;
+        var schema = fkMapping.PrincipalSchema;
+        var fullTableName = schema is not null ? $"[{schema}].[{tableName}]" : $"[{tableName}]";
+
+        var sql = $"SELECT * FROM {fullTableName} WHERE [{fkColumnName}] IN @fkValues";
+        var parameters = new Dictionary<string, object> { { "fkValues", fkValues } };
+
+        var task = (Task)genericQueryMethod.Invoke(_context, new object[] { sql, parameters })!;
+        await task.ConfigureAwait(false);
+
+        var resultProperty = task.GetType().GetProperty("Result");
+        var enumerable = resultProperty?.GetValue(task) as System.Collections.IEnumerable;
+
+        var result = new Dictionary<object, object>();
+        var relatedKeyProp = relatedType.GetProperty(fkMapping.PrincipalKeyColumnName);
+
+        if (enumerable is not null && relatedKeyProp is not null)
+        {
+            foreach (var entity in enumerable)
+            {
+                var keyValue = relatedKeyProp.GetValue(entity);
+                if (keyValue is not null)
+                {
+                    result[keyValue] = entity;
+                }
+            }
+        }
+
+        return result;
+    }
+
+    private void PopulateNavigationProperties(
+        List<TEntity> results,
+        PropertyInfo navigationProperty,
+        PropertyInfo fkProperty,
+        Dictionary<object, object> relatedEntities,
+        ForeignKeyMapping fkMapping)
+    {
+        if (!relatedEntities.Any())
+            return;
+
+        var isCollection = navigationProperty.PropertyType.IsGenericType &&
+                          navigationProperty.PropertyType.GetGenericTypeDefinition() == typeof(List<>);
+
+        foreach (var result in results)
+        {
+            var fkValue = fkProperty.GetValue(result);
+            if (fkValue is null)
+                continue;
+
+            if (relatedEntities.TryGetValue(fkValue, out var relatedEntity))
+            {
+                if (isCollection)
+                {
+                    var listType = navigationProperty.PropertyType;
+                    var list = (System.Collections.IList)Activator.CreateInstance(listType)!;
+                    list.Add(relatedEntity);
+                    navigationProperty.SetValue(result, list);
+                }
+                else
+                {
+                    navigationProperty.SetValue(result, relatedEntity);
+                }
+            }
+        }
     }
 
     public async Task<TEntity?> FirstOrDefaultAsync()

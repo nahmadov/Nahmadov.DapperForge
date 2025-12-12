@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Nahmadov.DapperForge.Core.Attributes;
 
 namespace ConnectionSample;
 
@@ -21,6 +22,9 @@ public class Customer
     public DateTime CreatedAt { get; set; }
 
     public DateTime? LastLogin { get; set; }
+
+    // Navigation property for related support tickets
+    public List<SupportTicket> SupportTickets { get; set; } = new();
 }
 
 public class SupportTicket
@@ -28,6 +32,7 @@ public class SupportTicket
     [Key]
     public int TicketId { get; set; }
 
+    [Nahmadov.DapperForge.Core.Attributes.ForeignKey(nameof(Customer), typeof(Customer), nameof(Customer.Id))]
     public int CustomerId { get; set; }
 
     [Required, MaxLength(200)]
@@ -44,6 +49,9 @@ public class SupportTicket
     public DateTime OpenedOn { get; set; }
 
     public DateTime? ClosedOn { get; set; }
+
+    // Navigation property for related customer
+    public Customer? Customer { get; set; }
 }
 
 public class AuditLog

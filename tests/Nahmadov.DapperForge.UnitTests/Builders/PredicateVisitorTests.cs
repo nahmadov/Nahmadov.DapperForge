@@ -18,7 +18,7 @@ public class PredicateVisitorTests
     {
         var (sql, parameters) = Translate(u => u.IsActive);
 
-        Assert.Equal("[IsActive] = 1", sql);
+        Assert.Equal("a.[IsActive] = 1", sql);
         Assert.Empty(parameters);
     }
 
@@ -27,7 +27,7 @@ public class PredicateVisitorTests
     {
         var (sql, parameters) = Translate(u => !u.IsActive);
 
-        Assert.Equal("[IsActive] = 0", sql);
+        Assert.Equal("a.[IsActive] = 0", sql);
         Assert.Empty(parameters);
     }
 
@@ -36,7 +36,7 @@ public class PredicateVisitorTests
     {
         var (sql, parameters) = Translate(u => u.Name.Contains("abc"));
 
-        Assert.Equal("[username] LIKE @p0 ESCAPE '\\'", sql);
+        Assert.Equal("a.[username] LIKE @p0 ESCAPE '\\'", sql);
         Assert.Single(parameters);
         Assert.Equal("%abc%", parameters["p0"]);
     }
@@ -46,7 +46,7 @@ public class PredicateVisitorTests
     {
         var (sql, parameters) = Translate(u => u.Name.Contains("a%b_c"));
 
-        Assert.Equal("[username] LIKE @p0 ESCAPE '\\'", sql);
+        Assert.Equal("a.[username] LIKE @p0 ESCAPE '\\'", sql);
         Assert.Single(parameters);
         Assert.Equal("%a\\%b\\_c%", parameters["p0"]);
     }
@@ -55,12 +55,12 @@ public class PredicateVisitorTests
     public void Translates_StartsWith_And_EndsWith()
     {
         var (startsSql, startsParams) = Translate(u => u.Name.StartsWith("abc"));
-        Assert.Equal("[username] LIKE @p0 ESCAPE '\\'", startsSql);
+        Assert.Equal("a.[username] LIKE @p0 ESCAPE '\\'", startsSql);
         var startsDict = Assert.IsType<Dictionary<string, object>>(startsParams);
         Assert.Equal("abc%", startsDict["p0"]);
 
         var (endsSql, endsParams) = Translate(u => u.Name.EndsWith("xyz"));
-        Assert.Equal("[username] LIKE @p0 ESCAPE '\\'", endsSql);
+        Assert.Equal("a.[username] LIKE @p0 ESCAPE '\\'", endsSql);
         var endsDict = Assert.IsType<Dictionary<string, object>>(endsParams);
         Assert.Equal("%xyz", endsDict["p0"]);
     }
@@ -72,12 +72,12 @@ public class PredicateVisitorTests
         var visitor = new PredicateVisitor<UserEntity>(mapping, SqlServerDialect.Instance);
 
         var (startsSql, startsParams) = visitor.Translate(u => u.Name.StartsWith("Ab"), ignoreCase: true);
-        Assert.Equal("LOWER([username]) LIKE @p0 ESCAPE '\\'", startsSql);
+        Assert.Equal("LOWER(a.[username]) LIKE @p0 ESCAPE '\\'", startsSql);
         var startsDict = Assert.IsType<Dictionary<string, object>>(startsParams);
         Assert.Equal("ab%", startsDict["p0"]);
 
         var (endsSql, endsParams) = visitor.Translate(u => u.Name.EndsWith("Cd"), ignoreCase: true);
-        Assert.Equal("LOWER([username]) LIKE @p0 ESCAPE '\\'", endsSql);
+        Assert.Equal("LOWER(a.[username]) LIKE @p0 ESCAPE '\\'", endsSql);
         var endsDict = Assert.IsType<Dictionary<string, object>>(endsParams);
         Assert.Equal("%cd", endsDict["p0"]);
     }
@@ -89,7 +89,7 @@ public class PredicateVisitorTests
         var visitor = new PredicateVisitor<UserEntity>(mapping, SqlServerDialect.Instance);
 
         var (sql, parameters) = visitor.Translate(u => u.Name.Contains("ABC"), ignoreCase: true);
-        Assert.Equal("LOWER([username]) LIKE @p0 ESCAPE '\\'", sql);
+        Assert.Equal("LOWER(a.[username]) LIKE @p0 ESCAPE '\\'", sql);
         var dict = Assert.IsType<Dictionary<string, object>>(parameters);
         Assert.Equal("%abc%", dict["p0"]);
     }
@@ -102,7 +102,7 @@ public class PredicateVisitorTests
 
         var (sql, parameters) = visitor.Translate(u => u.Name.StartsWith("Ab") && u.IsActive, ignoreCase: true);
 
-        Assert.Equal("(LOWER([username]) LIKE @p0 ESCAPE '\\' AND [IsActive] = 1)", sql);
+        Assert.Equal("(LOWER(a.[username]) LIKE @p0 ESCAPE '\\' AND a.[IsActive] = 1)", sql);
         var dict = Assert.IsType<Dictionary<string, object>>(parameters);
         Assert.Equal("ab%", dict["p0"]);
     }
@@ -114,7 +114,7 @@ public class PredicateVisitorTests
 
         var (sql, parameters) = Translate(u => u.Id > threshold);
 
-        Assert.Equal("([Id] > @p0)", sql);
+        Assert.Equal("(a.[Id] > @p0)", sql);
         Assert.Single(parameters);
         Assert.Equal(threshold, parameters["p0"]);
     }
@@ -124,7 +124,7 @@ public class PredicateVisitorTests
     {
         var (sql, parameters) = Translate(u => u.Name == null);
 
-        Assert.Equal("([username] IS NULL)", sql);
+        Assert.Equal("(a.[username] IS NULL)", sql);
         Assert.Empty(parameters);
     }
 
@@ -133,7 +133,7 @@ public class PredicateVisitorTests
     {
         var (sql, parameters) = Translate(u => u.Name == string.Empty);
 
-        Assert.Equal("([username] = @p0)", sql);
+        Assert.Equal("(a.[username] = @p0)", sql);
         Assert.Single(parameters);
         Assert.Equal(string.Empty, parameters["p0"]);
     }
@@ -146,7 +146,7 @@ public class PredicateVisitorTests
 
         var (sql, parameters) = visitor.Translate(u => u.Name.Contains("a%b"));
 
-        Assert.Equal("LOWER(\"username\") LIKE :p0 ESCAPE '\\'", sql);
+        Assert.Equal("LOWER(a.\"username\") LIKE :p0 ESCAPE '\\'", sql);
         var dict = Assert.IsType<Dictionary<string, object>>(parameters);
         Assert.Single(dict);
         Assert.Equal("%a\\%b%", dict["p0"]);
@@ -159,7 +159,7 @@ public class PredicateVisitorTests
 
         var (sql, parameters) = Translate(u => ids.Contains(u.Id));
 
-        Assert.Equal("[Id] IN @p0", sql);
+        Assert.Equal("a.[Id] IN @p0", sql);
         var dict = Assert.IsType<Dictionary<string, object>>(parameters);
         Assert.True(dict.TryGetValue("p0", out var value));
         var list = Assert.IsAssignableFrom<IEnumerable<int>>(value);

@@ -16,6 +16,7 @@ public class SampleRunner(AppDapperDbContext db)
         await RunCrudExamplesAsync(graceId, ticketId);
         await ShowReadOnlyExampleAsync();
         await ShowDapperQueryableExamplesAsync();
+        await ShowIncludeExamplesAsync();
         await ShowTransactionExamplesAsync();
     }
 
@@ -256,6 +257,43 @@ public class SampleRunner(AppDapperDbContext db)
             .Distinct()
             .ToList();
         Console.WriteLine($"Email domains of active customers: {string.Join(", ", emailDomains)}");
+    }
+
+    private async Task ShowIncludeExamplesAsync()
+    {
+        Console.WriteLine("\n=== Include (Eager Loading) Examples ===\n");
+
+        // Example 1: Include related tickets with customers
+        Console.WriteLine("Example 1: Include support tickets with customers");
+        var customersWithTickets = await _db.Customers
+            .Query()
+            .Include(c => c.SupportTickets)
+            .Where(c => c.IsActive)
+            .ToListAsync();
+
+        foreach (var customer in customersWithTickets)
+        {
+            Console.WriteLine($"  Customer: {customer.Name} - {customer.SupportTickets.Count} ticket(s)");
+            foreach (var ticket in customer.SupportTickets)
+            {
+                Console.WriteLine($"    - Ticket #{ticket.TicketId}: {ticket.Title} ({ticket.Status})");
+            }
+        }
+
+        // Example 2: Include related customer with tickets
+        Console.WriteLine("\nExample 2: Include related customer with tickets");
+        var ticketsWithCustomers = await _db.Tickets
+            .Query()
+            .Include(t => t.Customer)
+            .ToListAsync();
+
+        foreach (var ticket in ticketsWithCustomers)
+        {
+            var customerName = ticket.Customer?.Name ?? "Unknown";
+            Console.WriteLine($"  Ticket #{ticket.TicketId}: {ticket.Title}");
+            Console.WriteLine($"    - Customer: {customerName}");
+            Console.WriteLine($"    - Status: {ticket.Status}");
+        }
     }
 
     private async Task ShowTransactionExamplesAsync()

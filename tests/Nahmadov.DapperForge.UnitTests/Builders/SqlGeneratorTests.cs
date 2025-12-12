@@ -87,7 +87,7 @@ public class SqlGeneratorTests
         var mapping = BuildCompositeMapping();
         var generator = new SqlGenerator<CompositeEntity>(SqlServerDialect.Instance, mapping);
 
-        Assert.Contains("WHERE [TenantId] = @TenantId AND [UserId] = @UserId", generator.SelectByIdSql);
+        Assert.Contains("WHERE a.[TenantId] = @TenantId AND a.[UserId] = @UserId", generator.SelectByIdSql);
         Assert.Contains("WHERE [TenantId] = @TenantId AND [UserId] = @UserId", generator.DeleteByIdSql);
     }
 

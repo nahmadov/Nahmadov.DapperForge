@@ -12,7 +12,8 @@ public class EntityMapping(
     IReadOnlyList<PropertyInfo> keyProperties,
     IReadOnlyList<PropertyInfo> properties,
     IReadOnlyList<PropertyMapping> propertyMappings,
-    bool isReadOnly)
+    bool isReadOnly,
+    IReadOnlyList<ForeignKeyMapping>? foreignKeys = null)
 {
     public Type EntityType { get; } = entityType;
     public string TableName { get; } = tableName;
@@ -22,4 +23,5 @@ public class EntityMapping(
     public PropertyInfo? KeyProperty { get; } = keyProperties.FirstOrDefault();
     public IReadOnlyList<PropertyInfo> Properties { get; } = properties;
     public IReadOnlyList<PropertyMapping> PropertyMappings { get; } = propertyMappings;
+    public IReadOnlyList<ForeignKeyMapping> ForeignKeys { get; } = foreignKeys ?? [];
 }

@@ -65,4 +65,20 @@ public interface IDapperQueryable<TEntity> where TEntity : class
     /// Executes the query and returns the count of matching results.
     /// </summary>
     Task<long> CountAsync();
+
+    /// <summary>
+    /// Eagerly loads a related entity via a foreign key relationship.
+    /// </summary>
+    /// <typeparam name="TRelated">Type of related entity to load.</typeparam>
+    /// <param name="navigationSelector">Expression selecting the navigation property.</param>
+    /// <returns>Queryable object for chaining.</returns>
+    IDapperQueryable<TEntity> Include<TRelated>(Expression<Func<TEntity, TRelated?>> navigationSelector) where TRelated : class;
+
+    /// <summary>
+    /// Eagerly loads a related collection via a foreign key relationship.
+    /// </summary>
+    /// <typeparam name="TRelated">Type of related entities to load.</typeparam>
+    /// <param name="navigationSelector">Expression selecting the navigation property collection.</param>
+    /// <returns>Queryable object for chaining.</returns>
+    IDapperQueryable<TEntity> Include<TRelated>(Expression<Func<TEntity, IEnumerable<TRelated>>> navigationSelector) where TRelated : class;
 }
