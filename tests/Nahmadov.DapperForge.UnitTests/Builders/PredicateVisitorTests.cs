@@ -4,6 +4,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 using System.Linq.Expressions;
 
 using Nahmadov.DapperForge.Core.Builders;
+using Nahmadov.DapperForge.Core.Interfaces;
 using Nahmadov.DapperForge.Core.Mapping;
 using Nahmadov.DapperForge.Oracle;
 using Nahmadov.DapperForge.SqlServer;
@@ -13,6 +14,13 @@ namespace Nahmadov.DapperForge.UnitTests.Builders;
 
 public class PredicateVisitorTests
 {
+    private static EntityMapping CreateMapping(ISqlDialect dialect)
+    {
+        var builder = new DapperModelBuilder(dialect, dialect.DefaultSchema);
+        builder.Entity<UserEntity>();
+        return builder.Build()[typeof(UserEntity)];
+    }
+
     [Fact]
     public void Translates_Boolean_Member_To_TrueLiteral()
     {
@@ -68,7 +76,7 @@ public class PredicateVisitorTests
     [Fact]
     public void CaseInsensitive_StartsWith_And_EndsWith()
     {
-        var mapping = EntityMappingCache<UserEntity>.Mapping;
+        var mapping = CreateMapping(SqlServerDialect.Instance);
         var visitor = new PredicateVisitor<UserEntity>(mapping, SqlServerDialect.Instance);
 
         var (startsSql, startsParams) = visitor.Translate(u => u.Name.StartsWith("Ab"), ignoreCase: true);
@@ -85,7 +93,7 @@ public class PredicateVisitorTests
     [Fact]
     public void CaseInsensitive_Like_Uses_Lower()
     {
-        var mapping = EntityMappingCache<UserEntity>.Mapping;
+        var mapping = CreateMapping(SqlServerDialect.Instance);
         var visitor = new PredicateVisitor<UserEntity>(mapping, SqlServerDialect.Instance);
 
         var (sql, parameters) = visitor.Translate(u => u.Name.Contains("ABC"), ignoreCase: true);
@@ -97,7 +105,7 @@ public class PredicateVisitorTests
     [Fact]
     public void CaseInsensitive_Like_With_Boolean_Combines_Correctly()
     {
-        var mapping = EntityMappingCache<UserEntity>.Mapping;
+        var mapping = CreateMapping(SqlServerDialect.Instance);
         var visitor = new PredicateVisitor<UserEntity>(mapping, SqlServerDialect.Instance);
 
         var (sql, parameters) = visitor.Translate(u => u.Name.StartsWith("Ab") && u.IsActive, ignoreCase: true);
@@ -141,7 +149,7 @@ public class PredicateVisitorTests
     [Fact]
     public void Oracle_Contains_Uses_Escape_And_Colon_Params()
     {
-        var mapping = EntityMappingCache<UserEntity>.Mapping;
+        var mapping = CreateMapping(OracleDialect.Instance);
         var visitor = new PredicateVisitor<UserEntity>(mapping, OracleDialect.Instance);
 
         var (sql, parameters) = visitor.Translate(u => u.Name.Contains("a%b"));
@@ -168,7 +176,7 @@ public class PredicateVisitorTests
 
     private static (string Sql, IDictionary<string, object> Parameters) Translate(Expression<Func<UserEntity, bool>> predicate)
     {
-        var mapping = EntityMappingCache<UserEntity>.Mapping;
+        var mapping = CreateMapping(SqlServerDialect.Instance);
         var visitor = new PredicateVisitor<UserEntity>(mapping, SqlServerDialect.Instance);
 
         var (sql, parameters) = visitor.Translate(predicate);

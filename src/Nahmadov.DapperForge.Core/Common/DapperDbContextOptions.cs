@@ -12,6 +12,7 @@ public class DapperDbContextOptions
 {
     internal Func<IDbConnection>? ConnectionFactory { get; set; }
     internal ISqlDialect? Dialect { get; set; }
+    internal bool EnableSqlLogging { get; set; }
 }
 
 /// <summary>

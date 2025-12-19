@@ -34,6 +34,9 @@ public class OracleCompositeReturningTests
 
     private class OracleCompositeContext(DapperDbContextOptions<OracleCompositeContext> options) : DapperDbContext(options)
     {
+        // Register the entity type for model building
+        public DapperSet<CompositeEntity> CompositeEntities { get; } = default!;
+
         protected override void OnModelCreating(DapperModelBuilder modelBuilder)
         {
             modelBuilder.Entity<CompositeEntity>(b =>

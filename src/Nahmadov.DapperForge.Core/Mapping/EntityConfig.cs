@@ -6,7 +6,7 @@ namespace Nahmadov.DapperForge.Core.Mapping;
 public class EntityConfig(Type clrType)
 {
     public Type ClrType { get; } = clrType;
-    public string TableName { get; private set; } = default!;
+    public string? TableName { get; private set; }
     public string? Schema { get; private set; }
     public bool IsReadOnly { get; private set; }
     public bool HasKey { get; private set; } = true;

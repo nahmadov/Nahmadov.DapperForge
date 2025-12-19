@@ -24,9 +24,19 @@ public class PropertyBuilder(PropertyConfig property)
     /// Marks the property as required.
     /// </summary>
     /// <returns>The current builder for chaining.</returns>
-    public PropertyBuilder IsRequired()
+    public PropertyBuilder IsRequired(bool required = true)
     {
-        _property.SetRequired(true);
+        _property.SetRequired(required);
+        return this;
+    }
+
+    /// <summary>
+    /// Marks the property as optional, overriding any [Required] attribute.
+    /// </summary>
+    /// <returns>The current builder for chaining.</returns>
+    public PropertyBuilder IsOptional()
+    {
+        _property.SetRequired(false);
         return this;
     }
 
@@ -59,9 +69,9 @@ public class PropertyBuilder(PropertyConfig property)
     /// Marks the property as read-only, excluding it from updates.
     /// </summary>
     /// <returns>The current builder for chaining.</returns>
-    public PropertyBuilder IsReadOnly()
+    public PropertyBuilder IsReadOnly(bool readOnly = true)
     {
-        _property.SetReadOnly(true);
+        _property.SetReadOnly(readOnly);
         return this;
     }
 

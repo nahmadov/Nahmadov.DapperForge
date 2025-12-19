@@ -11,20 +11,27 @@ using Nahmadov.DapperForge.SqlServer;
 
 namespace Nahmadov.DapperForge.UnitTests.Context;
 
-/// <summary>
-/// Comprehensive unit tests for DapperQueryable fluent query builder.
-/// Tests: chainability, SQL generation, pagination, dialect-specific behavior, and execution paths.
-/// </summary>
-public sealed class DapperQueryableTests
-{
-    private static DapperQueryable<TestEntity> CreateQueryable(ISqlDialect? dialect = null)
+    /// <summary>
+    /// Comprehensive unit tests for DapperQueryable fluent query builder.
+    /// Tests: chainability, SQL generation, pagination, dialect-specific behavior, and execution paths.
+    /// </summary>
+    public sealed class DapperQueryableTests
     {
-        dialect ??= SqlServerDialect.Instance;
-        var mapping = EntityMappingCache<TestEntity>.Mapping;
-        var generator = new SqlGenerator<TestEntity>(dialect, mapping);
-        var context = new MockDapperDbContext();
-        return new DapperQueryable<TestEntity>(context, generator, mapping);
-    }
+        private static EntityMapping CreateMapping(ISqlDialect dialect)
+        {
+            var builder = new DapperModelBuilder(dialect, dialect.DefaultSchema);
+            builder.Entity<TestEntity>();
+            return builder.Build()[typeof(TestEntity)];
+        }
+
+        private static DapperQueryable<TestEntity> CreateQueryable(ISqlDialect? dialect = null)
+        {
+            dialect ??= SqlServerDialect.Instance;
+            var mapping = CreateMapping(dialect);
+            var generator = new SqlGenerator<TestEntity>(dialect, mapping);
+            var context = new MockDapperDbContext();
+            return new DapperQueryable<TestEntity>(context, generator, mapping);
+        }
 
     private static string GetBuildSqlResult(IDapperQueryable<TestEntity> query)
     {

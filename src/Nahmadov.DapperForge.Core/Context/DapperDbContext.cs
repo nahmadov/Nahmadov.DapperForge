@@ -1,8 +1,5 @@
 using System.Collections.Concurrent;
-using System.ComponentModel.DataAnnotations.Schema;
 using System.Data;
-using System.Diagnostics;
-using System.Linq.Expressions;
 using System.Reflection;
 
 using Dapper;
@@ -24,6 +21,7 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
     private bool _disposed;
     private readonly ConcurrentDictionary<Type, object> _sets = new();
     private readonly Dictionary<Type, EntityMapping> _model = [];
+    private readonly HashSet<Type> _registeredEntityTypes = new();
     private bool _modelBuilt;
 
     /// <summary>
@@ -157,6 +155,15 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
         OnModelCreating(builder);
         ApplyDbSetNameConvention(builder);
 
+        var dbSetEntityTypes = GetType()
+        .GetProperties(BindingFlags.Instance | BindingFlags.Public)
+        .Where(p => p.PropertyType.IsGenericType &&
+                    p.PropertyType.GetGenericTypeDefinition() == typeof(DapperSet<>))
+        .Select(p => p.PropertyType.GetGenericArguments()[0]);
+
+        foreach (var t in dbSetEntityTypes)
+            _registeredEntityTypes.Add(t);
+
         foreach (var kvp in builder.Build())
         {
             _model[kvp.Key] = kvp.Value;
@@ -166,7 +173,7 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
     }
 
     /// <summary>
-    /// Initializes mappings based on attributes discovered on DbSet entity types.
+    /// Ensures entity types referenced by DbSet<T> are registered with the model builder.
     /// </summary>
     /// <param name="builder">Model builder receiving the configuration.</param>
     private void InitializeMappingsFromAttributes(DapperModelBuilder builder)
@@ -185,87 +192,8 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
 
         foreach (var entityType in entityTypes)
         {
-            ApplyAttributeMapping(builder, entityType);
+            builder.Entity(entityType);
         }
-    }
-
-    /// <summary>
-    /// Invokes the generic attribute-mapping routine for a runtime entity type.
-    /// </summary>
-    /// <param name="builder">Model builder.</param>
-    /// <param name="entityType">Entity CLR type.</param>
-    private static void ApplyAttributeMapping(DapperModelBuilder builder, Type entityType)
-    {
-        var method = typeof(DapperDbContext)
-            .GetMethod(nameof(ApplyAttributeMappingGeneric), BindingFlags.NonPublic | BindingFlags.Static)!
-            .MakeGenericMethod(entityType);
-
-        method.Invoke(null, [builder]);
-    }
-
-    /// <summary>
-    /// Applies attribute-driven mapping configuration for a specific entity type.
-    /// </summary>
-    /// <typeparam name="TEntity">Entity type.</typeparam>
-    /// <param name="builder">Model builder to update.</param>
-    private static void ApplyAttributeMappingGeneric<TEntity>(DapperModelBuilder builder)
-        where TEntity : class
-    {
-        var mapping = EntityMappingCache<TEntity>.Mapping;
-        var entityBuilder = builder.Entity<TEntity>();
-
-        var tableAttr = typeof(TEntity).GetCustomAttribute<TableAttribute>();
-        if (tableAttr is not null || !string.IsNullOrWhiteSpace(mapping.Schema))
-        {
-            entityBuilder.ToTable(mapping.TableName, mapping.Schema);
-        }
-
-        if (mapping.KeyProperties.Count == 0)
-        {
-            entityBuilder.HasNoKey();
-        }
-        else
-        {
-            var keyExpressions = mapping.KeyProperties
-                .Select(BuildPropertyLambda<TEntity>)
-                .ToArray();
-            entityBuilder.HasKey(keyExpressions);
-        }
-
-        foreach (var pm in mapping.PropertyMappings)
-        {
-            var pb = entityBuilder.Property(BuildPropertyLambda<TEntity>(pm.Property));
-            if (!string.Equals(pm.ColumnName, pm.Property.Name, StringComparison.Ordinal))
-            {
-                pb.HasColumnName(pm.ColumnName);
-            }
-            if (pm.IsRequired)
-            {
-                pb.IsRequired();
-            }
-            if (pm.MaxLength is not null)
-            {
-                pb.HasMaxLength(pm.MaxLength.Value);
-            }
-            if (pm.IsReadOnly)
-            {
-                pb.IsReadOnly();
-            }
-        }
-    }
-
-    /// <summary>
-    /// Builds a lambda expression to access a property for mapping configuration.
-    /// </summary>
-    /// <typeparam name="TEntity">Entity type.</typeparam>
-    /// <param name="property">Property to access.</param>
-    /// <returns>Expression selecting the property.</returns>
-    private static Expression<Func<TEntity, object?>> BuildPropertyLambda<TEntity>(PropertyInfo property)
-    {
-        var parameter = Expression.Parameter(typeof(TEntity), "e");
-        var access = Expression.Property(parameter, property);
-        var convert = Expression.Convert(access, typeof(object));
-        return Expression.Lambda<Func<TEntity, object?>>(convert, parameter);
     }
 
     /// <summary>
@@ -301,14 +229,22 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
     /// <returns>Entity mapping metadata.</returns>
     internal EntityMapping GetEntityMapping<TEntity>() where TEntity : class
     {
-        var type = typeof(TEntity);
         EnsureModelBuilt();
+        var type = typeof(TEntity);
+
+
+        if (!_registeredEntityTypes.Contains(type))
+        {
+            throw new InvalidOperationException(
+                $"Entity '{type.Name}' is not registered in this context. " +
+                $"Declare it as a public DapperSet<{type.Name}> property on '{GetType().Name}'.");
+        }
+
         if (_model.TryGetValue(type, out var mapping))
             return mapping;
 
-        var fallback = EntityMappingCache<TEntity>.Mapping;
-        _model[type] = fallback;
-        return fallback;
+        throw new InvalidOperationException(
+                $"Mapping for entity '{type.Name}' was not built. Ensure model building includes this entity.");
     }
 
     /// <summary>
@@ -341,12 +277,11 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
     /// Writes executed SQL to the console and debug output for diagnostics.
     /// </summary>
     /// <param name="sql">SQL text to log.</param>
-    private static void LogSql(string sql)
+    private void LogSql(string sql)
     {
-        if (string.IsNullOrWhiteSpace(sql))
+        if (!_options.EnableSqlLogging || string.IsNullOrWhiteSpace(sql))
             return;
-        
-        var logMessage = $"[Nahmadov.DapperForge SQL] {sql}";
-        Console.WriteLine(logMessage);
+
+        Console.WriteLine($"[Nahmadov.DapperForge SQL] {sql}");
     }
 }
