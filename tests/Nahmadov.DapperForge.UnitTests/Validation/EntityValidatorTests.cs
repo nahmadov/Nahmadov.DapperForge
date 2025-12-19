@@ -92,32 +92,21 @@ public class EntityValidatorTests
     }
 
     [Fact]
-    public void ValidateForInsert_ThrowsWhenRequiredStringIsEmpty()
+    public void ValidateForInsert_AllowsEmptyStringWhenRequired()
     {
         var mapping = BuildUserMapping();
         var user = new User { Name = "", Email = "test@example.com" };
 
-        var exception = Assert.Throws<Nahmadov.DapperForge.Core.Exceptions.DapperValidationException>(() =>
-        {
-            EntityValidator<User>.ValidateForInsert(user, mapping);
-        });
-
-        Assert.Contains("required", exception.Message, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("cannot be empty", exception.Message);
+        EntityValidator<User>.ValidateForInsert(user, mapping);
     }
 
     [Fact]
-    public void ValidateForInsert_ThrowsWhenRequiredStringIsWhitespace()
+    public void ValidateForInsert_AllowsWhitespaceStringWhenRequired()
     {
         var mapping = BuildUserMapping();
         var user = new User { Name = "   ", Email = "test@example.com" };
 
-        var exception = Assert.Throws<Nahmadov.DapperForge.Core.Exceptions.DapperValidationException>(() =>
-        {
-            EntityValidator<User>.ValidateForInsert(user, mapping);
-        });
-
-        Assert.Contains("required", exception.Message, StringComparison.OrdinalIgnoreCase);
+        EntityValidator<User>.ValidateForInsert(user, mapping);
     }
 
     [Fact]

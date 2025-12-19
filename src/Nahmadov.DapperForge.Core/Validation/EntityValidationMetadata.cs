@@ -1,4 +1,6 @@
-using System.Reflection;
+using System.Collections.Concurrent;
+
+using Nahmadov.DapperForge.Core.Mapping;
 
 namespace Nahmadov.DapperForge.Core.Validation;
 
@@ -7,26 +9,34 @@ namespace Nahmadov.DapperForge.Core.Validation;
 /// </summary>
 internal static class EntityValidationMetadata<TEntity> where TEntity : class
 {
-    /// <summary>
-    /// Validation metadata for each property that has validation rules.
-    /// </summary>
-    public static readonly PropertyValidationMetadata[] Properties = Build();
+    private static readonly ConcurrentDictionary<Type, ValidationMetadataSet> _cache = new();
 
     /// <summary>
-    /// Scans the entity type for validation attributes and builds metadata.
+    /// Gets validation metadata for properties present in the mapping.
     /// </summary>
-    /// <returns>Array of property validation metadata.</returns>
-    private static PropertyValidationMetadata[] Build()
+    /// <param name="mapping">Entity mapping to align validation with.</param>
+    /// <returns>Cached validation metadata set.</returns>
+    public static ValidationMetadataSet Get(EntityMapping mapping)
     {
-        var type = typeof(TEntity);
+        ArgumentNullException.ThrowIfNull(mapping);
 
-        var props = type.GetProperties(BindingFlags.Instance | BindingFlags.Public)
-                        .Where(p => p.CanRead &&
-                                    p.GetIndexParameters().Length == 0)
-                        .Select(p => new PropertyValidationMetadata(p))
-                        .Where(m => m.HasAnyRule)
-                        .ToArray();
+        return _cache.GetOrAdd(mapping.EntityType, _ =>
+        {
+            var props = mapping.PropertyMappings
+                               .Select(pm => new PropertyValidationMetadata(pm.Property))
+                               .Where(m => m.HasAnyRule)
+                               .ToArray();
 
-        return props;
+            var lookup = props.ToDictionary(m => m.Property, m => m);
+            return new ValidationMetadataSet(props, lookup);
+        });
     }
+}
+
+internal sealed class ValidationMetadataSet(
+    PropertyValidationMetadata[] properties,
+    IReadOnlyDictionary<System.Reflection.PropertyInfo, PropertyValidationMetadata> lookup)
+{
+    public PropertyValidationMetadata[] Properties { get; } = properties;
+    public IReadOnlyDictionary<System.Reflection.PropertyInfo, PropertyValidationMetadata> Lookup { get; } = lookup;
 }

@@ -24,8 +24,13 @@ internal sealed class PropertyValidationMetadata(PropertyInfo property)
     public StringLengthAttribute? StringLength { get; } = property.GetCustomAttribute<StringLengthAttribute>();
 
     /// <summary>
+    /// Gets the [MaxLength] attribute if defined.
+    /// </summary>
+    public MaxLengthAttribute? MaxLength { get; } = property.GetCustomAttribute<MaxLengthAttribute>();
+
+    /// <summary>
     /// Indicates whether any validation attributes are present.
     /// </summary>
     public bool HasAnyRule =>
-          Required is not null || StringLength is not null;
+          Required is not null || StringLength is not null || MaxLength is not null;
 }
