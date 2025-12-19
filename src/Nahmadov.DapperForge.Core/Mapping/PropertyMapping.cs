@@ -8,8 +8,8 @@ namespace Nahmadov.DapperForge.Core.Mapping;
 /// </summary>
 public sealed class PropertyMapping(
     PropertyInfo prop,
-    ColumnAttribute? colAttr,
-    DatabaseGeneratedAttribute? genAttr,
+    string columnName,
+    DatabaseGeneratedOption? generatedOption,
     bool isReadOnly = false,
     bool isRequired = false,
     int? maxLength = null,
@@ -23,12 +23,12 @@ public sealed class PropertyMapping(
     /// <summary>
     /// Gets the database column name for the property.
     /// </summary>
-    public string ColumnName { get; } = colAttr?.Name ?? prop.Name;
+    public string ColumnName { get; } = string.IsNullOrWhiteSpace(columnName) ? prop.Name : columnName;
 
     /// <summary>
     /// Gets the generation strategy applied by the database, if any.
     /// </summary>
-    public DatabaseGeneratedOption? GeneratedOption { get; } = genAttr?.DatabaseGeneratedOption;
+    public DatabaseGeneratedOption? GeneratedOption { get; } = generatedOption;
 
     /// <summary>
     /// Indicates whether the property is treated as read-only.
@@ -61,12 +61,12 @@ public sealed class PropertyMapping(
     public bool IsComputed => GeneratedOption == DatabaseGeneratedOption.Computed;
 
     /// <summary>
-    /// True when the column should not be provided on insert/update due to generation rules or read-only status.
-    /// </summary>
-    public bool IsGenerated => IsIdentity || IsComputed || IsReadOnly;
-
-    /// <summary>
     /// True when the mapping uses a sequence to generate values.
     /// </summary>
     public bool UsesSequence => !string.IsNullOrWhiteSpace(SequenceName);
+
+    /// <summary>
+    /// True when the column should not be provided on insert/update due to generation rules or read-only status.
+    /// </summary>
+    public bool IsGenerated => IsIdentity || IsComputed || IsReadOnly || UsesSequence;
 }

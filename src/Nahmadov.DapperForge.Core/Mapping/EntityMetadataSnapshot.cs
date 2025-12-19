@@ -37,13 +37,13 @@ internal sealed class EntityMetadataSnapshot(
 /// Captures attribute-derived metadata for a single property.
 /// </summary>
 internal sealed class PropertyAttributeSnapshot(
-    ColumnAttribute? column,
-    DatabaseGeneratedAttribute? generated,
+    string? columnName,
+    DatabaseGeneratedOption? generatedOption,
     bool hasRequiredAttribute,
     int? maxLength)
 {
-    public ColumnAttribute? Column { get; } = column;
-    public DatabaseGeneratedAttribute? Generated { get; } = generated;
+    public string? ColumnName { get; } = columnName;
+    public DatabaseGeneratedOption? GeneratedOption { get; } = generatedOption;
     public bool HasRequiredAttribute { get; } = hasRequiredAttribute;
     public int? MaxLength { get; } = maxLength;
 }

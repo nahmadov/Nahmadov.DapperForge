@@ -67,7 +67,11 @@ internal static class EntityMappingCache<TEntity>
                 ? stringLength.MaximumLength
                 : maxLengthAttr?.Length > 0 ? maxLengthAttr.Length : (int?)null;
 
-            propertyAttributes[prop] = new PropertyAttributeSnapshot(colAttr, genAttr, hasRequired, maxLength);
+            propertyAttributes[prop] = new PropertyAttributeSnapshot(
+                colAttr?.Name,
+                genAttr?.DatabaseGeneratedOption,
+                hasRequired,
+                maxLength);
         }
 
         var foreignKeyAttributes = allProps
