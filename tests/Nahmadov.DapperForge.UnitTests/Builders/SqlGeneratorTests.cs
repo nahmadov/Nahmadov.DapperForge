@@ -144,6 +144,7 @@ public class SqlGeneratorTests
     {
         public int TenantId { get; set; }
         public int UserId { get; set; }
+        public string Name { get; set; } = string.Empty;
     }
 
     private class OracleSeqEntity

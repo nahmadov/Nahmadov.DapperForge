@@ -33,6 +33,11 @@ public class SqlServerDialect : ISqlDialect
     public string QuoteIdentifier(string identifier) => $"[{identifier}]";
 
     /// <summary>
+    /// Formats a table alias using SQL Server syntax.
+    /// </summary>
+    public string FormatTableAlias(string alias) => $"AS {alias}";
+
+    /// <summary>
     /// Builds an INSERT statement that returns the generated identity value.
     /// </summary>
     /// <param name="baseInsertSql">Base INSERT SQL.</param>

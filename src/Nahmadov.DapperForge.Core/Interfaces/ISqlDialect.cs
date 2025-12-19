@@ -30,6 +30,13 @@ public interface ISqlDialect
     string QuoteIdentifier(string identifier);
 
     /// <summary>
+    /// Formats a table alias according to the dialect (e.g., "AS a" vs "a").
+    /// </summary>
+    /// <param name="alias">Alias to format.</param>
+    /// <returns>Dialect-specific table alias fragment.</returns>
+    string FormatTableAlias(string alias);
+
+    /// <summary>
     /// Builds SQL that returns key values after an insert based on the dialect's syntax.
     /// </summary>
     /// <param name="baseInsertSql">Insert statement without returning clause.</param>

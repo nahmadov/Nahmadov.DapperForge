@@ -33,6 +33,11 @@ public class OracleDialect : ISqlDialect
     public string QuoteIdentifier(string identifier) => $"\"{identifier}\"";
 
     /// <summary>
+    /// Formats a table alias using Oracle syntax (no AS keyword).
+    /// </summary>
+    public string FormatTableAlias(string alias) => alias;
+
+    /// <summary>
     /// Builds an INSERT statement that returns generated key values using RETURNING INTO.
     /// </summary>
     /// <param name="baseInsertSql">Base INSERT SQL.</param>

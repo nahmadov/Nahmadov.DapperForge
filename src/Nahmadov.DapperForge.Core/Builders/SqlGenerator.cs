@@ -35,9 +35,7 @@ internal sealed class SqlGenerator<TEntity> where TEntity : class
     /// <summary>
     /// Indicates whether the key property is an identity column.
     /// </summary>
-    public bool IsKeyIdentity =>
-        _mapping.KeyProperty is not null && (_mapping.PropertyMappings
-                .FirstOrDefault(pm => pm.Property == _mapping.KeyProperty)?.IsIdentity ?? false);
+    public bool IsKeyGenerated => _mapping.KeyProperty is not null && (_mapping.PropertyMappings.FirstOrDefault(pm => pm.Property == _mapping.KeyProperty)?.IsGenerated ?? false);
 
     /// <summary>
     /// Gets the name of the SQL dialect in use.
@@ -91,8 +89,8 @@ internal sealed class SqlGenerator<TEntity> where TEntity : class
 
         _fullTableName = BuildFullTableName();
         _keyColumns = GetKeyColumns();
-        _insertableProperties = [.. _mapping.PropertyMappings.Where(pm => !pm.IsGenerated || pm.UsesSequence)];
-        _updatableProperties = [.. _mapping.PropertyMappings.Where(pm => !_mapping.KeyProperties.Contains(pm.Property) && !pm.IsGenerated)];
+        _insertableProperties = [.. _mapping.PropertyMappings.Where(pm => !pm.IsReadOnly && (!pm.IsGenerated || pm.UsesSequence))];
+        _updatableProperties = [.. _mapping.PropertyMappings.Where(pm => !_mapping.KeyProperties.Contains(pm.Property) && !pm.IsGenerated && !pm.IsReadOnly)];
 
         SelectAllSql = BuildSelectAllSql();
         SelectByIdSql = BuildSelectByIdSql();
@@ -121,12 +119,13 @@ internal sealed class SqlGenerator<TEntity> where TEntity : class
     private string BuildSelectAllSql()
     {
         const string tableAlias = "a";
+        var aliasFragment = _dialect.FormatTableAlias(tableAlias);
         var columnList = string.Join(
             ", ",
             _mapping.PropertyMappings.Select(pm =>
                 $"{tableAlias}.{_dialect.QuoteIdentifier(pm.ColumnName)} AS {_dialect.QuoteIdentifier(pm.Property.Name)}"));
 
-        return $"SELECT {columnList} FROM {_fullTableName} AS {tableAlias}";
+        return $"SELECT {columnList} FROM {_fullTableName} {aliasFragment}";
     }
 
     /// <summary>
@@ -215,12 +214,14 @@ internal sealed class SqlGenerator<TEntity> where TEntity : class
     /// <summary>
     /// Builds the UPDATE statement for the entity based on updatable properties.
     /// </summary>
-    /// <returns>UPDATE SQL string or empty if no updatable columns exist.</returns>
+    /// <returns>UPDATE SQL string.</returns>
     private string BuildUpdateSql()
     {
         if (_updatableProperties.Length == 0)
         {
-            return string.Empty;
+            throw new InvalidOperationException(
+                $"Entity '{typeof(TEntity).Name}' has no updatable columns. " +
+                "All properties are marked as DatabaseGenerated, Key, or ReadOnly.");
         }
 
         var setClause = string.Join(
