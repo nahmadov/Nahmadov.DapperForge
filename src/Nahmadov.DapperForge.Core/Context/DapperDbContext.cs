@@ -22,6 +22,7 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
     private readonly ConcurrentDictionary<Type, object> _sets = new();
     private readonly Dictionary<Type, EntityMapping> _model = [];
     private readonly HashSet<Type> _registeredEntityTypes = new();
+    private readonly ConcurrentDictionary<Type, object> _sqlGeneratorCache = new();
     private bool _modelBuilt;
 
     /// <summary>
@@ -245,6 +246,52 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
 
         throw new InvalidOperationException(
                 $"Mapping for entity '{type.Name}' was not built. Ensure model building includes this entity.");
+    }
+
+    internal EntityMapping GetEntityMapping(Type entityType)
+    {
+        EnsureModelBuilt();
+
+        if (!_registeredEntityTypes.Contains(entityType))
+        {
+            throw new InvalidOperationException(
+                $"Entity '{entityType.Name}' is not registered in this context. " +
+                $"Declare it as a public DapperSet<{entityType.Name}> property on '{GetType().Name}'.");
+        }
+
+        if (_model.TryGetValue(entityType, out var mapping))
+            return mapping;
+
+        throw new InvalidOperationException(
+            $"Mapping for entity '{entityType.Name}' was not built. Ensure it is registered in the model.");
+    }
+
+    internal object GetSqlGenerator(Type entityType)
+    {
+        ArgumentNullException.ThrowIfNull(entityType);
+
+        EnsureModelBuilt();
+
+        return _sqlGeneratorCache.GetOrAdd(entityType, t =>
+        {
+            var mapping = GetEntityMapping(t);
+
+            var genType = typeof(SqlGenerator<>).MakeGenericType(t);
+            return Activator.CreateInstance(genType, _options.Dialect!, mapping) ?? throw new InvalidOperationException($"Could not create SqlGenerator for '{t.Name}'.");
+        });
+    }
+
+    /// <summary>
+    /// Helper: reads SelectAllSql from SqlGenerator&lt;T&gt; instance.
+    /// </summary>
+    internal static string GetSelectAllSqlFromGenerator(object generator)
+    {
+        var prop = generator.GetType().GetProperty("SelectAllSql", BindingFlags.Public | BindingFlags.Instance);
+        if (prop is null)
+            throw new InvalidOperationException($"Generator '{generator.GetType().Name}' has no SelectAllSql property.");
+
+        return (string)(prop.GetValue(generator)
+            ?? throw new InvalidOperationException($"SelectAllSql is null on '{generator.GetType().Name}'."));
     }
 
     /// <summary>

@@ -1,6 +1,4 @@
 using System.ComponentModel.DataAnnotations;
-using System.ComponentModel.DataAnnotations.Schema;
-using Nahmadov.DapperForge.Core.Attributes;
 
 namespace ConnectionSample;
 

@@ -4,6 +4,7 @@ using System.Reflection;
 using Nahmadov.DapperForge.Core.Builders;
 using Nahmadov.DapperForge.Core.Interfaces;
 using Nahmadov.DapperForge.Core.Mapping;
+using Nahmadov.DapperForge.Core.Query;
 
 namespace Nahmadov.DapperForge.Core.Context;
 
@@ -23,7 +24,12 @@ internal sealed class DapperQueryable<TEntity> : IDapperQueryable<TEntity> where
     private int _skipCount;
     private int _takeCount;
     private bool _ignoreCase;
-    private readonly List<(Type RelatedType, PropertyInfo NavigationProperty)> _includes = new();
+
+    private readonly IncludeTree _includeTree = new();
+    private IncludeNode? _lastIncludeNode;
+
+    private QuerySplittingBehavior _splittingBehavior = QuerySplittingBehavior.SplitQuery;
+    private bool _identityResolution = true;
 
     /// <summary>
     /// Initializes a new query builder for the given context.
@@ -77,164 +83,130 @@ internal sealed class DapperQueryable<TEntity> : IDapperQueryable<TEntity> where
         return this;
     }
 
-    public IDapperQueryable<TEntity> Include<TRelated>(Expression<Func<TEntity, TRelated?>> navigationSelector) where TRelated : class
+    public IDapperQueryable<TEntity> AsSplitQuery()
     {
-        ArgumentNullException.ThrowIfNull(navigationSelector);
-        if (navigationSelector.Body is MemberExpression member)
-        {
-            if (member.Member is PropertyInfo prop)
-            {
-                _includes.Add((typeof(TRelated), prop));
-            }
-        }
+        _splittingBehavior = QuerySplittingBehavior.SplitQuery;
         return this;
     }
 
-    public IDapperQueryable<TEntity> Include<TRelated>(Expression<Func<TEntity, IEnumerable<TRelated>>> navigationSelector) where TRelated : class
+    public IDapperQueryable<TEntity> AsSingleQuery()
+    {
+        _splittingBehavior = QuerySplittingBehavior.SingleQuery;
+        return this;
+    }
+
+    public IDapperQueryable<TEntity> AsNoIdentityResolution()
+    {
+        _identityResolution = false;
+        return this;
+    }
+
+    public IIncludableQueryable<TEntity, TRelated?> Include<TRelated>(Expression<Func<TEntity, TRelated?>> navigationSelector)
+        where TRelated : class
     {
         ArgumentNullException.ThrowIfNull(navigationSelector);
-        if (navigationSelector.Body is MemberExpression member)
+
+        var navProp = ExtractProperty(navigationSelector.Body);
+
+        var node = new IncludeNode
         {
-            if (member.Member is PropertyInfo prop)
-            {
-                _includes.Add((typeof(TRelated), prop));
-            }
-        }
-        return this;
+            Navigation = navProp,
+            RelatedType = typeof(TRelated),
+            IsCollection = false
+        };
+
+        _includeTree.Roots.Add(node);
+        _lastIncludeNode = node;
+
+        return new IncludableQueryable<TEntity, TRelated?>(this);
+    }
+
+    public IIncludableQueryable<TEntity, IEnumerable<TRelated>> Include<TRelated>(Expression<Func<TEntity, IEnumerable<TRelated>>> navigationSelector)
+        where TRelated : class
+    {
+        ArgumentNullException.ThrowIfNull(navigationSelector);
+
+        var navProp = ExtractProperty(navigationSelector.Body);
+
+        var node = new IncludeNode
+        {
+            Navigation = navProp,
+            RelatedType = typeof(TRelated),
+            IsCollection = true
+        };
+
+        _includeTree.Roots.Add(node);
+        _lastIncludeNode = node;
+
+        return new IncludableQueryable<TEntity, IEnumerable<TRelated>>(this);
+    }
+
+    public IIncludableQueryable<TEntity, TNext?> ThenInclude<TPrevious, TNext>(Expression<Func<TPrevious, TNext?>> navigationSelector)
+        where TPrevious : class
+        where TNext : class
+    {
+        ArgumentNullException.ThrowIfNull(navigationSelector);
+
+        if (_lastIncludeNode is null)
+            throw new InvalidOperationException("ThenInclude must be called after Include.");
+
+        var navProp = ExtractProperty(navigationSelector.Body);
+
+        var node = new IncludeNode
+        {
+            Navigation = navProp,
+            RelatedType = typeof(TNext),
+            IsCollection = false
+        };
+
+        _lastIncludeNode.Children.Add(node);
+        _lastIncludeNode = node;
+
+        return new IncludableQueryable<TEntity, TNext?>(this);
+    }
+
+    public IIncludableQueryable<TEntity, IEnumerable<TNext>> ThenInclude<TPrevious, TNext>(Expression<Func<TPrevious, IEnumerable<TNext>>> navigationSelector)
+        where TPrevious : class
+        where TNext : class
+    {
+        ArgumentNullException.ThrowIfNull(navigationSelector);
+
+        if (_lastIncludeNode is null)
+            throw new InvalidOperationException("ThenInclude must be called after Include.");
+
+        var navProp = ExtractProperty(navigationSelector.Body);
+
+        var node = new IncludeNode
+        {
+            Navigation = navProp,
+            RelatedType = typeof(TNext),
+            IsCollection = true
+        };
+
+        _lastIncludeNode.Children.Add(node);
+        _lastIncludeNode = node;
+
+        return new IncludableQueryable<TEntity, IEnumerable<TNext>>(this);
     }
 
     public async Task<IEnumerable<TEntity>> ToListAsync()
     {
         var sql = BuildSql();
         var parameters = GetParameters();
+
         var results = await _context.QueryAsync<TEntity>(sql, parameters);
-        var resultList = results.ToList();
+        var list = results.ToList();
 
-        // Load related entities if includes are specified
-        if (_includes.Count > 0)
-        {
-            await LoadIncludedEntitiesAsync(resultList);
-        }
+        if (list.Count == 0 || _includeTree.Roots.Count == 0)
+            return list;
 
-        return resultList;
-    }
+        if (_splittingBehavior == QuerySplittingBehavior.SingleQuery)
+            throw new NotSupportedException("AsSingleQuery is not implemented yet. It requires join SQL + multi-mapping + graph fixup.");
 
-    private async Task LoadIncludedEntitiesAsync(List<TEntity> results)
-    {
-        if (results.Count == 0)
-            return;
+        var loader = new SplitIncludeLoader(_context, _generator.Dialect, _identityResolution);
+        await loader.LoadAsync(_mapping, list, _includeTree);
 
-        foreach (var (relatedType, navProp) in _includes)
-        {
-            // Get the FK property that references this related entity
-            var fkMapping = _mapping.ForeignKeys.FirstOrDefault(fk => fk.NavigationProperty == navProp);
-            if (fkMapping is null)
-                continue;
-
-            // Get all the FK values from the main results
-            var fkProperty = _mapping.PropertyMappings.FirstOrDefault(pm => pm.ColumnName == fkMapping.ForeignKeyColumnName)?.Property;
-            if (fkProperty is null)
-                continue;
-
-            var fkValues = results
-                .Select(r => fkProperty.GetValue(r))
-                .Where(v => v is not null)
-                .Distinct()
-                .ToList();
-
-            if (fkValues.Count == 0)
-                continue;
-
-            // Load related entities
-            var relatedEntities = await LoadRelatedEntitiesAsync(relatedType, fkMapping, fkValues);
-
-            // Populate navigation properties
-            PopulateNavigationProperties(results, navProp, fkProperty, relatedEntities, fkMapping);
-        }
-    }
-
-    private async Task<Dictionary<object, object>> LoadRelatedEntitiesAsync(
-        Type relatedType,
-        ForeignKeyMapping fkMapping,
-        List<object?> fkValues)
-    {
-        // Build a query method dynamically using reflection
-        var queryMethod = _context.GetType()
-            .GetMethods(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance)
-            .FirstOrDefault(m => m.Name == "QueryAsync" && m.IsGenericMethodDefinition);
-
-        if (queryMethod is null)
-            return new Dictionary<object, object>();
-
-        var genericQueryMethod = queryMethod.MakeGenericMethod(relatedType);
-
-        // Build IN clause for FK values
-        var fkColumnName = fkMapping.ForeignKeyColumnName;
-        var tableName = fkMapping.PrincipalTableName;
-        var schema = fkMapping.PrincipalSchema;
-        var fullTableName = schema is not null ? $"[{schema}].[{tableName}]" : $"[{tableName}]";
-
-        var sql = $"SELECT * FROM {fullTableName} WHERE [{fkColumnName}] IN @fkValues";
-        var parameters = new Dictionary<string, object> { { "fkValues", fkValues } };
-
-        var task = (Task)genericQueryMethod.Invoke(_context, new object[] { sql, parameters })!;
-        await task.ConfigureAwait(false);
-
-        var resultProperty = task.GetType().GetProperty("Result");
-        var enumerable = resultProperty?.GetValue(task) as System.Collections.IEnumerable;
-
-        var result = new Dictionary<object, object>();
-        var relatedKeyProp = relatedType.GetProperty(fkMapping.PrincipalKeyColumnName);
-
-        if (enumerable is not null && relatedKeyProp is not null)
-        {
-            foreach (var entity in enumerable)
-            {
-                var keyValue = relatedKeyProp.GetValue(entity);
-                if (keyValue is not null)
-                {
-                    result[keyValue] = entity;
-                }
-            }
-        }
-
-        return result;
-    }
-
-    private void PopulateNavigationProperties(
-        List<TEntity> results,
-        PropertyInfo navigationProperty,
-        PropertyInfo fkProperty,
-        Dictionary<object, object> relatedEntities,
-        ForeignKeyMapping fkMapping)
-    {
-        if (!relatedEntities.Any())
-            return;
-
-        var isCollection = navigationProperty.PropertyType.IsGenericType &&
-                          navigationProperty.PropertyType.GetGenericTypeDefinition() == typeof(List<>);
-
-        foreach (var result in results)
-        {
-            var fkValue = fkProperty.GetValue(result);
-            if (fkValue is null)
-                continue;
-
-            if (relatedEntities.TryGetValue(fkValue, out var relatedEntity))
-            {
-                if (isCollection)
-                {
-                    var listType = navigationProperty.PropertyType;
-                    var list = (System.Collections.IList)Activator.CreateInstance(listType)!;
-                    list.Add(relatedEntity);
-                    navigationProperty.SetValue(result, list);
-                }
-                else
-                {
-                    navigationProperty.SetValue(result, relatedEntity);
-                }
-            }
-        }
+        return list;
     }
 
     public async Task<TEntity?> FirstOrDefaultAsync()
@@ -368,5 +340,17 @@ internal sealed class DapperQueryable<TEntity> : IDapperQueryable<TEntity> where
         }
 
         return baseSql;
+    }
+
+    private static PropertyInfo ExtractProperty(Expression body)
+    {
+        if (body is MemberExpression me && me.Member is PropertyInfo pi)
+            return pi;
+
+        // Handle boxing/unary
+        if (body is UnaryExpression ue && ue.Operand is MemberExpression me2 && me2.Member is PropertyInfo pi2)
+            return pi2;
+
+        throw new NotSupportedException($"Expression '{body}' is not a property access.");
     }
 }
