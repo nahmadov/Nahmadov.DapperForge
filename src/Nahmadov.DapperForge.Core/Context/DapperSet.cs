@@ -369,8 +369,16 @@ public sealed class DapperSet<TEntity> where TEntity : class
             ?? throw new InvalidOperationException($"Entity '{typeof(TEntity).Name}' has no key property.");
 
         var parameters = new DynamicParameters(entity);
-        parameters.Add(keyProp.Name, dbType: DbType.Object, direction: ParameterDirection.Output);
+        var clrType = keyProp.PropertyType;
 
+        if (_generator.Dialect.TryMapDbType(clrType, out var dbType))
+        {
+            parameters.Add(keyProp.Name, dbType: dbType, direction: ParameterDirection.Output);
+        }
+        else
+        {
+            parameters.Add(keyProp.Name, dbType: DbType.Object, direction: ParameterDirection.Output);
+        }
         await _context.ExecuteAsync(_generator.InsertReturningIdSql!, parameters, transaction);
 
         return parameters.Get<TKey>(keyProp.Name);

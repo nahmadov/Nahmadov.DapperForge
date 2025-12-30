@@ -1,3 +1,5 @@
+using System.Data;
+
 namespace Nahmadov.DapperForge.Core.Interfaces;
 
 /// <summary>
@@ -51,4 +53,9 @@ public interface ISqlDialect
     /// <param name="value">The boolean value to format.</param>
     /// <returns>Dialect-specific representation of the boolean value.</returns>
     string FormatBoolean(bool value);
+
+    /// <summary>
+    /// Maps CLR type to DbType for Dapper parameters (especially OUTPUT parameters).
+    /// </summary>
+    bool TryMapDbType(Type clrType, out DbType dbType);
 }
