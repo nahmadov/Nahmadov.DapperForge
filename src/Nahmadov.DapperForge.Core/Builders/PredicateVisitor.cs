@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Collections.Concurrent;
 using System.Linq.Expressions;
 using System.Reflection;
 using System.Text;
@@ -14,6 +15,9 @@ namespace Nahmadov.DapperForge.Core.Builders;
 public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
     where TEntity : class
 {
+    private static readonly ConcurrentDictionary<ExpressionCacheKey, Delegate> _compiledExpressionCache = new();
+    private const int MaxCacheSize = 1000;
+
     private readonly EntityMapping _mapping;
     private readonly ISqlDialect _dialect;
     private readonly Dictionary<PropertyInfo, PropertyMapping> _propertyLookup;
@@ -694,6 +698,7 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
 
     /// <summary>
     /// Evaluates an expression by compiling and executing it when not a constant.
+    /// Uses caching to avoid recompiling the same expressions.
     /// </summary>
     /// <param name="expr">Expression to evaluate.</param>
     /// <returns>Resulting value.</returns>
@@ -703,7 +708,40 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
             return constant.Value;
 
         var lambda = Expression.Lambda(expr);
-        var compiled = lambda.Compile();
+        var cacheKey = new ExpressionCacheKey(lambda);
+
+        var compiled = _compiledExpressionCache.GetOrAdd(cacheKey, _ =>
+        {
+            if (_compiledExpressionCache.Count >= MaxCacheSize)
+            {
+                _compiledExpressionCache.Clear();
+            }
+            return lambda.Compile();
+        });
+
         return compiled.DynamicInvoke();
+    }
+
+    /// <summary>
+    /// Cache key for compiled expressions based on expression tree structure.
+    /// </summary>
+    private readonly struct ExpressionCacheKey : IEquatable<ExpressionCacheKey>
+    {
+        private readonly int _hashCode;
+        private readonly string _debugView;
+
+        public ExpressionCacheKey(LambdaExpression lambda)
+        {
+            _debugView = lambda.ToString();
+            _hashCode = _debugView.GetHashCode();
+        }
+
+        public bool Equals(ExpressionCacheKey other)
+            => _debugView == other._debugView;
+
+        public override bool Equals(object? obj)
+            => obj is ExpressionCacheKey key && Equals(key);
+
+        public override int GetHashCode() => _hashCode;
     }
 }

@@ -8,11 +8,14 @@ namespace Nahmadov.DapperForge.Core.Query;
 /// <summary>
 /// Manages identity resolution for Include operations.
 /// Ensures the same entity key returns the same instance.
+/// Uses LRU eviction to prevent unbounded memory growth.
 /// </summary>
-internal sealed class IdentityCache(Func<Type, EntityMapping> resolveMapping)
+internal sealed class IdentityCache(Func<Type, EntityMapping> resolveMapping, int maxSize = 10_000)
 {
-    private readonly Dictionary<(Type type, object key), object> _cache = [];
+    private readonly Dictionary<(Type type, object key), CacheEntry> _cache = [];
+    private readonly LinkedList<(Type type, object key)> _lruList = new();
     private readonly Func<Type, EntityMapping> _resolveMapping = resolveMapping;
+    private readonly int _maxSize = maxSize;
 
     /// <summary>
     /// Resolves an entity instance, returning cached instance if exists.
@@ -40,30 +43,56 @@ internal sealed class IdentityCache(Func<Type, EntityMapping> resolveMapping)
     }
 
     /// <summary>
-    /// Gets or adds an instance to the cache.
+    /// Gets or adds an instance to the cache with LRU eviction.
     /// </summary>
     public object GetOrAdd(Type type, object key, object instance)
     {
         var cacheKey = (type, key);
         if (_cache.TryGetValue(cacheKey, out var existing))
-            return existing;
+        {
+            _lruList.Remove(existing.Node);
+            _lruList.AddFirst(existing.Node);
+            return existing.Instance;
+        }
 
-        _cache[cacheKey] = instance;
+        if (_cache.Count >= _maxSize)
+        {
+            var lruKey = _lruList.Last!.Value;
+            _cache.Remove(lruKey);
+            _lruList.RemoveLast();
+        }
+
+        var node = _lruList.AddFirst(cacheKey);
+        _cache[cacheKey] = new CacheEntry(instance, node);
         return instance;
     }
 
     /// <summary>
-    /// Tries to get an existing instance from the cache.
+    /// Tries to get an existing instance from the cache and updates LRU order.
     /// </summary>
     public bool TryGet(Type type, object key, out object? instance)
     {
-        return _cache.TryGetValue((type, key), out instance);
+        var cacheKey = (type, key);
+        if (_cache.TryGetValue(cacheKey, out var entry))
+        {
+            _lruList.Remove(entry.Node);
+            _lruList.AddFirst(entry.Node);
+            instance = entry.Instance;
+            return true;
+        }
+
+        instance = null;
+        return false;
     }
 
     /// <summary>
     /// Clears the identity cache.
     /// </summary>
-    public void Clear() => _cache.Clear();
+    public void Clear()
+    {
+        _cache.Clear();
+        _lruList.Clear();
+    }
 
     /// <summary>
     /// Builds an index of entities by their key property.
@@ -124,4 +153,9 @@ internal sealed class IdentityCache(Func<Type, EntityMapping> resolveMapping)
         public bool Equals(T? x, T? y) => ReferenceEquals(x, y);
         public int GetHashCode(T obj) => RuntimeHelpers.GetHashCode(obj);
     }
+
+    /// <summary>
+    /// Cache entry containing instance and LRU list node.
+    /// </summary>
+    private readonly record struct CacheEntry(object Instance, LinkedListNode<(Type type, object key)> Node);
 }
