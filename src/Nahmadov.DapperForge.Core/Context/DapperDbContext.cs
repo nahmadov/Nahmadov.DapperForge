@@ -4,6 +4,8 @@ using System.Reflection;
 
 using Dapper;
 
+using Microsoft.Extensions.Logging;
+
 using Nahmadov.DapperForge.Core.Builders;
 using Nahmadov.DapperForge.Core.Common;
 using Nahmadov.DapperForge.Core.Exceptions;
@@ -80,13 +82,17 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
 
                 if (_connection is null)
                 {
+                    const string msg = "ConnectionFactory returned null";
+                    LogError(new InvalidOperationException(msg), null, msg);
                     throw new DapperConnectionException(
                         "ConnectionFactory returned null. Ensure the factory creates a valid connection.");
                 }
 
                 if (_connection.State != ConnectionState.Open)
                 {
+                    LogInformation($"Opening database connection to {_connection.Database ?? "database"}");
                     _connection.Open();
+                    LogInformation("Database connection opened successfully");
                 }
 
                 return _connection;
@@ -97,6 +103,7 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
             }
             catch (Exception ex)
             {
+                LogError(ex, null, "Failed to establish database connection");
                 throw new DapperConnectionException(
                     $"Failed to establish database connection: {ex.Message}", ex);
             }
@@ -385,14 +392,49 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
     }
 
     /// <summary>
-    /// Writes executed SQL to the console and debug output for diagnostics.
+    /// Logs executed SQL using configured logger or console fallback.
+    /// Supports structured logging when ILogger is configured.
     /// </summary>
     /// <param name="sql">SQL text to log.</param>
     private void LogSql(string sql)
     {
-        if (!_options.EnableSqlLogging || string.IsNullOrWhiteSpace(sql))
+        if (string.IsNullOrWhiteSpace(sql))
             return;
 
-        Console.WriteLine($"[Nahmadov.DapperForge SQL] {sql}");
+        // Use ILogger if configured (takes precedence)
+        if (_options.Logger != null)
+        {
+            _options.Logger.LogDebug("Executing SQL: {Sql}", sql);
+            return;
+        }
+
+        // Fallback to console logging if enabled
+        if (_options.EnableSqlLogging)
+        {
+            Console.WriteLine($"[Nahmadov.DapperForge SQL] {sql}");
+        }
+    }
+
+    /// <summary>
+    /// Logs an error during database operations.
+    /// </summary>
+    /// <param name="exception">The exception that occurred.</param>
+    /// <param name="sql">SQL that caused the error.</param>
+    /// <param name="message">Additional context message.</param>
+    private void LogError(Exception exception, string? sql, string message)
+    {
+        if (_options.Logger != null)
+        {
+            _options.Logger.LogError(exception, "{Message}. SQL: {Sql}", message, sql ?? "N/A");
+        }
+    }
+
+    /// <summary>
+    /// Logs connection-related events.
+    /// </summary>
+    /// <param name="message">Log message.</param>
+    private void LogInformation(string message)
+    {
+        _options.Logger?.LogInformation("{Message}", message);
     }
 }
