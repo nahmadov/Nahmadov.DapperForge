@@ -92,6 +92,20 @@ public sealed class DapperSet<TEntity> where TEntity : class
     }
 
     /// <summary>
+    /// Returns the first entity matching the predicate.
+    /// Throws if the sequence is empty.
+    /// </summary>
+    /// <param name="predicate">Predicate expression to translate.</param>
+    /// <param name="ignoreCase">When true, uses case-insensitive comparison where supported.</param>
+    public async Task<TEntity> FirstAsync(Expression<Func<TEntity, bool>> predicate, bool ignoreCase = false)
+    {
+        var result = await FirstOrDefaultAsync(predicate, ignoreCase);
+        if (result is null)
+            throw new InvalidOperationException("Sequence contains no elements.");
+        return result;
+    }
+
+    /// <summary>
     /// Returns the first entity matching the predicate or null if none are found.
     /// </summary>
     /// <param name="predicate">Predicate expression to translate.</param>
@@ -104,6 +118,47 @@ public sealed class DapperSet<TEntity> where TEntity : class
 
         var finalSql = $"{_generator.SelectAllSql} WHERE {sql}";
         return _context.QueryFirstOrDefaultAsync<TEntity>(finalSql, parameters);
+    }
+
+    /// <summary>
+    /// Determines whether any entities match the specified predicate.
+    /// </summary>
+    /// <param name="predicate">Predicate expression to translate.</param>
+    /// <param name="ignoreCase">When true, uses case-insensitive comparison where supported.</param>
+    public async Task<bool> AnyAsync(Expression<Func<TEntity, bool>> predicate, bool ignoreCase = false)
+    {
+        var count = await CountAsync(predicate, ignoreCase);
+        return count > 0;
+    }
+
+    /// <summary>
+    /// Determines whether all entities match the specified predicate.
+    /// </summary>
+    /// <param name="predicate">Predicate expression to translate.</param>
+    /// <param name="ignoreCase">When true, uses case-insensitive comparison where supported.</param>
+    public async Task<bool> AllAsync(Expression<Func<TEntity, bool>> predicate, bool ignoreCase = false)
+    {
+        var visitor = new PredicateVisitor<TEntity>(_mapping, _generator.Dialect);
+        var (whereClause, parameters) = visitor.Translate(predicate, ignoreCase);
+
+        var countSql = $"SELECT COUNT(*) FROM {_generator.TableName} AS a WHERE NOT ({whereClause})";
+        var countNotMatching = await _context.QueryFirstOrDefaultAsync<long>(countSql, parameters);
+
+        return countNotMatching == 0;
+    }
+
+    /// <summary>
+    /// Returns the count of entities matching the specified predicate.
+    /// </summary>
+    /// <param name="predicate">Predicate expression to translate.</param>
+    /// <param name="ignoreCase">When true, uses case-insensitive comparison where supported.</param>
+    public Task<long> CountAsync(Expression<Func<TEntity, bool>> predicate, bool ignoreCase = false)
+    {
+        var visitor = new PredicateVisitor<TEntity>(_mapping, _generator.Dialect);
+        var (whereClause, parameters) = visitor.Translate(predicate, ignoreCase);
+
+        var countSql = $"SELECT COUNT(*) FROM {_generator.TableName} AS a WHERE {whereClause}";
+        return _context.QueryFirstOrDefaultAsync<long>(countSql, parameters);
     }
 
     #endregion

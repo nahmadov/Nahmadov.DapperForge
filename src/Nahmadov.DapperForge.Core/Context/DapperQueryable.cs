@@ -157,11 +157,27 @@ internal sealed class DapperQueryable<TEntity> : IDapperQueryable<TEntity> where
             : await ExecuteSplitQueryWithIncludesAsync();
     }
 
+    public async Task<TEntity> FirstAsync()
+    {
+        var result = await FirstOrDefaultAsync();
+        if (result is null)
+            throw new InvalidOperationException("Sequence contains no elements.");
+        return result;
+    }
+
     public async Task<TEntity?> FirstOrDefaultAsync()
     {
         var sql = BuildSql();
         var parameters = BuildParameters();
         return await _context.QueryFirstOrDefaultAsync<TEntity>(sql, parameters);
+    }
+
+    public async Task<TEntity> SingleAsync()
+    {
+        var result = await SingleOrDefaultAsync();
+        if (result is null)
+            throw new InvalidOperationException("Sequence contains no elements.");
+        return result;
     }
 
     public async Task<TEntity?> SingleOrDefaultAsync()
@@ -171,9 +187,30 @@ internal sealed class DapperQueryable<TEntity> : IDapperQueryable<TEntity> where
 
         if (list.Count > 1)
             throw new InvalidOperationException(
-                $"SingleOrDefaultAsync expected 0 or 1 result(s), but found {list.Count}.");
+                $"Sequence contains more than one element.");
 
         return list.FirstOrDefault();
+    }
+
+    public async Task<TEntity> LastAsync()
+    {
+        var result = await LastOrDefaultAsync();
+        if (result is null)
+            throw new InvalidOperationException("Sequence contains no elements.");
+        return result;
+    }
+
+    public async Task<TEntity?> LastOrDefaultAsync()
+    {
+        var results = await ExecuteSimpleQueryAsync();
+        var list = results.ToList();
+        return list.LastOrDefault();
+    }
+
+    public async Task<bool> AnyAsync()
+    {
+        var count = await CountAsync();
+        return count > 0;
     }
 
     public async Task<long> CountAsync()

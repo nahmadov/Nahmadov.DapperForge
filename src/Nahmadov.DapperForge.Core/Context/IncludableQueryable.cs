@@ -34,7 +34,12 @@ namespace Nahmadov.DapperForge.Core.Context;
         => _inner.ThenInclude(navigationSelector);
 
     public Task<IEnumerable<TEntity>> ToListAsync() => _inner.ToListAsync();
+    public Task<TEntity> FirstAsync() => _inner.FirstAsync();
     public Task<TEntity?> FirstOrDefaultAsync() => _inner.FirstOrDefaultAsync();
+    public Task<TEntity> SingleAsync() => _inner.SingleAsync();
     public Task<TEntity?> SingleOrDefaultAsync() => _inner.SingleOrDefaultAsync();
+    public Task<TEntity> LastAsync() => _inner.LastAsync();
+    public Task<TEntity?> LastOrDefaultAsync() => _inner.LastOrDefaultAsync();
+    public Task<bool> AnyAsync() => _inner.AnyAsync();
     public Task<long> CountAsync() => _inner.CountAsync();
 }

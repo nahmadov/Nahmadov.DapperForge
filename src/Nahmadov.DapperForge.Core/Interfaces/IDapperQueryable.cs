@@ -64,15 +64,43 @@ public interface IDapperQueryable<TEntity> where TEntity : class
     Task<IEnumerable<TEntity>> ToListAsync();
 
     /// <summary>
+    /// Executes the query and returns the first result.
+    /// Throws if the sequence is empty.
+    /// </summary>
+    Task<TEntity> FirstAsync();
+
+    /// <summary>
     /// Executes the query and returns the first result or null.
     /// </summary>
     Task<TEntity?> FirstOrDefaultAsync();
+
+    /// <summary>
+    /// Executes the query and returns the only result.
+    /// Throws if the sequence is empty or contains more than one element.
+    /// </summary>
+    Task<TEntity> SingleAsync();
 
     /// <summary>
     /// Executes the query and returns the only result or null if no results exist.
     /// Throws if more than one result is found.
     /// </summary>
     Task<TEntity?> SingleOrDefaultAsync();
+
+    /// <summary>
+    /// Executes the query and returns the last result.
+    /// Throws if the sequence is empty.
+    /// </summary>
+    Task<TEntity> LastAsync();
+
+    /// <summary>
+    /// Executes the query and returns the last result or null.
+    /// </summary>
+    Task<TEntity?> LastOrDefaultAsync();
+
+    /// <summary>
+    /// Determines whether the query returns any results.
+    /// </summary>
+    Task<bool> AnyAsync();
 
     /// <summary>
     /// Executes the query and returns the count of matching results.
