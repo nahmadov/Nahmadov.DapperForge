@@ -101,49 +101,41 @@ internal sealed class DapperQueryable<TEntity> : IDapperQueryable<TEntity> where
         return this;
     }
 
-    public IIncludableQueryable<TEntity, TRelated?> Include<TRelated>(Expression<Func<TEntity, TRelated?>> navigationSelector)
-        where TRelated : class
+    public IIncludableQueryable<TEntity, TProperty> Include<TProperty>(Expression<Func<TEntity, TProperty>> navigationSelector)
     {
         ArgumentNullException.ThrowIfNull(navigationSelector);
 
         var navProp = ExtractProperty(navigationSelector.Body);
 
+        var isCollection = navProp.PropertyType != typeof(string) && typeof(System.Collections.IEnumerable).IsAssignableFrom(navProp.PropertyType);
+
+        var relatedType = isCollection ? GetElementTypeOrThrow(navProp.PropertyType, navProp.Name) : navProp.PropertyType;
+
         var node = new IncludeNode
         {
             Navigation = navProp,
-            RelatedType = typeof(TRelated),
-            IsCollection = false
+            RelatedType = relatedType,
+            IsCollection = isCollection
         };
 
         _includeTree.Roots.Add(node);
         _lastIncludeNode = node;
 
-        return new IncludableQueryable<TEntity, TRelated?>(this);
+        return new IncludableQueryable<TEntity, TProperty>(this);
     }
 
-    public IIncludableQueryable<TEntity, IEnumerable<TRelated>> Include<TRelated>(Expression<Func<TEntity, IEnumerable<TRelated>>> navigationSelector)
-        where TRelated : class
+    private static Type GetElementTypeOrThrow(Type collectionType, string navName)
     {
-        ArgumentNullException.ThrowIfNull(navigationSelector);
-
-        var navProp = ExtractProperty(navigationSelector.Body);
-
-        var node = new IncludeNode
-        {
-            Navigation = navProp,
-            RelatedType = typeof(TRelated),
-            IsCollection = true
-        };
-
-        _includeTree.Roots.Add(node);
-        _lastIncludeNode = node;
-
-        return new IncludableQueryable<TEntity, IEnumerable<TRelated>>(this);
+        var enumerableInterface = (collectionType.IsGenericType && collectionType.GetGenericTypeDefinition() == typeof(IEnumerable<>)
+            ? collectionType
+            : collectionType.GetInterfaces()
+                .FirstOrDefault(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IEnumerable<>)))
+             ?? throw new NotSupportedException($"Navigation '{navName}' looks like a collection but element type could not be resolved.");
+        return enumerableInterface.GetGenericArguments()[0];
     }
 
-    public IIncludableQueryable<TEntity, TNext?> ThenInclude<TPrevious, TNext>(Expression<Func<TPrevious, TNext?>> navigationSelector)
+    public IIncludableQueryable<TEntity, TNextProperty> ThenInclude<TPrevious, TNextProperty>(Expression<Func<TPrevious, TNextProperty>> navigationSelector)
         where TPrevious : class
-        where TNext : class
     {
         ArgumentNullException.ThrowIfNull(navigationSelector);
 
@@ -152,41 +144,21 @@ internal sealed class DapperQueryable<TEntity> : IDapperQueryable<TEntity> where
 
         var navProp = ExtractProperty(navigationSelector.Body);
 
+        var isCollection = navProp.PropertyType != typeof(string) && typeof(System.Collections.IEnumerable).IsAssignableFrom(navProp.PropertyType);
+
+        var relatedType = isCollection ? GetElementTypeOrThrow(navProp.PropertyType, navProp.Name) : navProp.PropertyType;
+
         var node = new IncludeNode
         {
             Navigation = navProp,
-            RelatedType = typeof(TNext),
-            IsCollection = false
+            RelatedType = relatedType,
+            IsCollection = isCollection
         };
 
         _lastIncludeNode.Children.Add(node);
         _lastIncludeNode = node;
 
-        return new IncludableQueryable<TEntity, TNext?>(this);
-    }
-
-    public IIncludableQueryable<TEntity, IEnumerable<TNext>> ThenInclude<TPrevious, TNext>(Expression<Func<TPrevious, IEnumerable<TNext>>> navigationSelector)
-        where TPrevious : class
-        where TNext : class
-    {
-        ArgumentNullException.ThrowIfNull(navigationSelector);
-
-        if (_lastIncludeNode is null)
-            throw new InvalidOperationException("ThenInclude must be called after Include.");
-
-        var navProp = ExtractProperty(navigationSelector.Body);
-
-        var node = new IncludeNode
-        {
-            Navigation = navProp,
-            RelatedType = typeof(TNext),
-            IsCollection = true
-        };
-
-        _lastIncludeNode.Children.Add(node);
-        _lastIncludeNode = node;
-
-        return new IncludableQueryable<TEntity, IEnumerable<TNext>>(this);
+        return new IncludableQueryable<TEntity, TNextProperty>(this);
     }
 
     public async Task<IEnumerable<TEntity>> ToListAsync()

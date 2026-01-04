@@ -22,7 +22,7 @@ public class Customer
     public DateTime? LastLogin { get; set; }
 
     // Navigation property for related support tickets
-    public List<SupportTicket> SupportTickets { get; set; } = new();
+    public List<SupportTicket> SupportTickets { get; set; } = [];
 }
 
 public class SupportTicket

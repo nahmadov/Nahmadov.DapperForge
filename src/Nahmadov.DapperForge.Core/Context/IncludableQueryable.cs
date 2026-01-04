@@ -26,22 +26,11 @@ namespace Nahmadov.DapperForge.Core.Context;
     public IDapperQueryable<TEntity> AsSingleQuery() => _inner.AsSingleQuery();
     public IDapperQueryable<TEntity> AsNoIdentityResolution() => _inner.AsNoIdentityResolution();
 
-    public IIncludableQueryable<TEntity, TRelated?> Include<TRelated>(Expression<Func<TEntity, TRelated?>> navigationSelector)
-        where TRelated : class
+    public IIncludableQueryable<TEntity, TRelated> Include<TRelated>(Expression<Func<TEntity, TRelated>> navigationSelector)
         => _inner.Include(navigationSelector);
 
-    public IIncludableQueryable<TEntity, IEnumerable<TRelated>> Include<TRelated>(Expression<Func<TEntity, IEnumerable<TRelated>>> navigationSelector)
-        where TRelated : class
-        => _inner.Include(navigationSelector);
-
-    public IIncludableQueryable<TEntity, TNext?> ThenInclude<TPrevious, TNext>(Expression<Func<TPrevious, TNext?>> navigationSelector)
+    public IIncludableQueryable<TEntity, TNextProperty> ThenInclude<TPrevious, TNextProperty>(Expression<Func<TPrevious, TNextProperty>> navigationSelector)
         where TPrevious : class
-        where TNext : class
-        => _inner.ThenInclude(navigationSelector);
-
-    public IIncludableQueryable<TEntity, IEnumerable<TNext>> ThenInclude<TPrevious, TNext>(Expression<Func<TPrevious, IEnumerable<TNext>>> navigationSelector)
-        where TPrevious : class
-        where TNext : class
         => _inner.ThenInclude(navigationSelector);
 
     public Task<IEnumerable<TEntity>> ToListAsync() => _inner.ToListAsync();

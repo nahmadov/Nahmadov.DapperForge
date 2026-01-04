@@ -49,10 +49,8 @@ internal sealed class SplitIncludeLoader
         // NOTE: Current FK model supports reference navigations best.
         if (node.IsCollection)
         {
-            // TODO: Requires inverse relationship metadata (child FK -> parent PK).
-            // For now, keep behavior explicit.
-            throw new NotSupportedException(
-                $"Collection Include '{node.Navigation.Name}' is not supported yet with the current ForeignKeyMapping model.");
+            await LoadCollectionAsync(parentMapping, parents, node, ct);
+            return;
         }
 
         var fk = parentMapping.ForeignKeys.FirstOrDefault(x => x.NavigationProperty == node.Navigation);
@@ -114,6 +112,155 @@ internal sealed class SplitIncludeLoader
         var g = mi.MakeGenericMethod(parentType);
         var task = (Task)g.Invoke(this, [parentMapping, typedList, child, ct])!;
         await task.ConfigureAwait(false);
+    }
+
+    private async Task LoadCollectionAsync<TParent>(
+        EntityMapping parentMapping,
+        List<TParent> parents,
+        IncludeNode node,
+        CancellationToken ct)
+        where TParent : class
+    {
+        if (parents.Count == 0)
+            return;
+
+        var parentType = parentMapping.EntityType;
+
+        // 1️⃣ Parent PK-ları topla
+        if (parentMapping.KeyProperties.Count == 0)
+            throw new InvalidOperationException(
+                $"Entity '{parentType.Name}' has no key defined.");
+
+        var parentKeyProp = parentMapping.KeyProperties[0];
+
+        var parentKeys = parents
+            .Select(p => parentKeyProp.GetValue(p))
+            .Where(v => v is not null)
+            .Distinct()
+            .Cast<object>()
+            .ToList();
+
+        if (parentKeys.Count == 0)
+            return;
+
+        // 2️⃣ Child mapping tap (inverse FK)
+        var childMapping = _context.GetEntityMapping(node.RelatedType);
+
+        var fk = childMapping.ForeignKeys
+            .FirstOrDefault(f => f.PrincipalEntityType == parentType);
+
+        if (fk is null)
+            throw new InvalidOperationException(
+                $"No foreign key found on '{childMapping.EntityType.Name}' pointing to '{parentType.Name}'.");
+
+        // 3️⃣ Child-ları generator ilə yüklə
+        var (sql, parameters) = BuildCollectionQuery(
+            childMapping,
+            fk,
+            parentKeys);
+
+        var children = await QueryRelatedAsync(
+            childMapping.EntityType,
+            sql,
+            parameters);
+
+        // 4️⃣ Group: parentKey → List<child>
+        var childrenByParentKey = new Dictionary<object, List<object>>();
+
+        foreach (var child in children)
+        {
+            var fkValue = fk.ForeignKeyProperty.GetValue(child);
+            if (fkValue is null)
+                continue;
+
+            if (!childrenByParentKey.TryGetValue(fkValue, out var list))
+            {
+                list = new List<object>();
+                childrenByParentKey[fkValue] = list;
+            }
+
+            list.Add(child);
+        }
+
+        // 5️⃣ Parent-lara collection assign et
+        foreach (var parent in parents)
+        {
+            var pk = parentKeyProp.GetValue(parent);
+            if (pk is null)
+                continue;
+
+            if (!childrenByParentKey.TryGetValue(pk, out var list))
+                list = new List<object>();
+
+            var collection = CreateCollectionInstance(node.Navigation.PropertyType, list);
+            node.Navigation.SetValue(parent, collection);
+        }
+
+        // 6️⃣ ThenInclude (recursive)
+        if (node.Children.Count > 0 && children.Count > 0)
+        {
+            foreach (var childNode in node.Children)
+            {
+                await LoadChildrenAsync(childMapping, children, childNode, ct);
+            }
+        }
+    }
+
+    private (string sql, DynamicParameters parameters) BuildCollectionQuery(
+    EntityMapping childMapping,
+    ForeignKeyMapping fk,
+    IReadOnlyList<object> parentKeys)
+    {
+        // generator-dan SELECT ... FROM ...
+        var gen = _context.GetSqlGenerator(childMapping.EntityType);
+        var baseSelect = DapperDbContext.GetSelectAllSqlFromGenerator(gen);
+
+        // FK column
+        var fkProp = fk.ForeignKeyProperty;
+        var fkMap = childMapping.PropertyMappings.First(pm => pm.Property == fkProp);
+
+        var fkColumnSql = $"a.{_dialect.QuoteIdentifier(fkMap.ColumnName)}";
+
+        var paramName = "p";
+        var inClause = $"{fkColumnSql} IN {_dialect.FormatParameter(paramName)}";
+
+        var parameters = new DynamicParameters();
+        parameters.Add(paramName, parentKeys);
+
+        var sql = $"{baseSelect} WHERE {inClause}";
+        return (sql, parameters);
+    }
+
+    private static object CreateCollectionInstance(
+    Type collectionType,
+    List<object> items)
+    {
+        // ICollection<T>, IEnumerable<T>, List<T>, HashSet<T>
+        if (collectionType.IsInterface)
+        {
+            var elementType = collectionType.GetGenericArguments()[0];
+            var listType = typeof(List<>).MakeGenericType(elementType);
+            var list = (System.Collections.IList)Activator.CreateInstance(listType)!;
+
+            foreach (var item in items)
+                list.Add(item);
+
+            return list;
+        }
+
+        var instance = Activator.CreateInstance(collectionType)
+                       ?? throw new InvalidOperationException($"Cannot create instance of '{collectionType.Name}'.");
+
+        if (instance is System.Collections.IList ilist)
+        {
+            foreach (var item in items)
+                ilist.Add(item);
+
+            return ilist;
+        }
+
+        throw new NotSupportedException(
+            $"Collection type '{collectionType.Name}' is not supported for Include.");
     }
 
     private (string sql, DynamicParameters parameters) BuildRelatedQuery(

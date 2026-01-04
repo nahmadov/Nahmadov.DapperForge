@@ -53,19 +53,10 @@ public interface IDapperQueryable<TEntity> where TEntity : class
     IDapperQueryable<TEntity> AsNoIdentityResolution();
 
     // NEW: Include / ThenInclude (EF-like)
-    IIncludableQueryable<TEntity, TRelated?> Include<TRelated>(Expression<Func<TEntity, TRelated?>> navigationSelector)
-        where TRelated : class;
+    IIncludableQueryable<TEntity, TProperty> Include<TProperty>(Expression<Func<TEntity, TProperty>> navigationSelector);
 
-    IIncludableQueryable<TEntity, IEnumerable<TRelated>> Include<TRelated>(Expression<Func<TEntity, IEnumerable<TRelated>>> navigationSelector)
-        where TRelated : class;
-
-    IIncludableQueryable<TEntity, TNext?> ThenInclude<TPrevious, TNext>(Expression<Func<TPrevious, TNext?>> navigationSelector)
-        where TPrevious : class
-        where TNext : class;
-
-    IIncludableQueryable<TEntity, IEnumerable<TNext>> ThenInclude<TPrevious, TNext>(Expression<Func<TPrevious, IEnumerable<TNext>>> navigationSelector)
-        where TPrevious : class
-        where TNext : class;
+    IIncludableQueryable<TEntity, TNextProperty> ThenInclude<TPrevious, TNextProperty>(Expression<Func<TPrevious, TNextProperty>> navigationSelector)
+        where TPrevious : class;
 
     /// <summary>
     /// Executes the query and returns all matching results.
