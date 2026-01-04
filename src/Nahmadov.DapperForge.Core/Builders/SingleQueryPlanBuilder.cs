@@ -6,156 +6,167 @@ using Nahmadov.DapperForge.Core.Query;
 
 namespace Nahmadov.DapperForge.Core.Builders;
 
-internal sealed class JoinContext
-{
-    internal required string ParentAlias { get; init; }
-    internal required EntityMapping ParentMapping { get; init; }
-}
-
-internal class SingleQueryPlanBuilder(ISqlDialect dialect, Func<Type, EntityMapping> resolveMapping)
+/// <summary>
+/// Builds SQL query plans for single-query Include operations using JOINs.
+/// </summary>
+internal sealed class SingleQueryPlanBuilder(ISqlDialect dialect, Func<Type, EntityMapping> resolveMapping)
 {
     private readonly ISqlDialect _dialect = dialect;
     private readonly Func<Type, EntityMapping> _resolveMapping = resolveMapping;
-    private int _aliasIndex = 0;
+    private int _aliasIndex;
 
-    internal SingleQueryPlan Build(EntityMapping rootMapping, IncludeTree tree)
+    public SingleQueryPlan Build(EntityMapping rootMapping, IncludeTree tree)
     {
-        var rootAlias = "a";
+        _aliasIndex = 0;
 
-        var sb = new StringBuilder();
         var selectParts = new List<string>();
         var joinParts = new List<string>();
+        var splitOnColumns = new List<string>();
 
-        AppendSelectColumns(selectParts, rootAlias, "a", rootMapping);
+        const string rootAlias = "a";
+        AppendSelectColumns(selectParts, rootAlias, rootMapping);
 
-        var splitOnCols = new List<string>();
-
+        var rootContext = new JoinContext(rootAlias, rootMapping);
         foreach (var node in tree.Roots)
         {
-            BuildNode(
-                node,
-                new JoinContext
-                {
-                    ParentAlias = rootAlias,
-                    ParentMapping = rootMapping
-                },
-                selectParts,
-                joinParts,
-                splitOnCols
-            );
+            BuildNodeJoin(node, rootContext, selectParts, joinParts, splitOnColumns);
         }
-        var rootTable = FullTable(rootMapping);
-        sb.Append("SELECT ");
-        sb.Append(string.Join(", ", selectParts));
-        sb.Append(" FROM ");
-        sb.Append(rootTable);
-        sb.Append(' ');
-        sb.Append(_dialect.FormatTableAlias(rootAlias));
-        sb.Append(' ');
 
-        foreach (var j in joinParts)
-        {
-            sb.Append(j);
-            sb.Append(' ');
-        }
+        var sql = BuildFinalSql(rootMapping, rootAlias, selectParts, joinParts);
+
         return new SingleQueryPlan
         {
-            Sql = sb.ToString().Trim(),
-            SplitOn = string.Join(", ", splitOnCols),
+            Sql = sql,
+            SplitOn = string.Join(", ", splitOnColumns),
             MapTypesCount = 1 + tree.Roots.Count
         };
     }
 
-    private void BuildNode(IncludeNode node, JoinContext ctx, List<string> selectParts, List<string> joinParts, List<string> splitOnCols)
+    private void BuildNodeJoin(
+        IncludeNode node,
+        JoinContext parentContext,
+        List<string> selectParts,
+        List<string> joinParts,
+        List<string> splitOnColumns)
     {
-        _aliasIndex++;
-        var alias = $"b{_aliasIndex}";
-        var relMapping = _resolveMapping(node.RelatedType);
+        var alias = GetNextAlias();
+        var relatedMapping = _resolveMapping(node.RelatedType);
 
-        if (!node.IsCollection)
-        {
-            // Reference
-            var fk = ctx.ParentMapping.ForeignKeys
-                .FirstOrDefault(f => f.NavigationProperty == node.Navigation);
+        var joinClause = node.IsCollection
+            ? BuildCollectionJoin(node, parentContext, relatedMapping, alias)
+            : BuildReferenceJoin(node, parentContext, relatedMapping, alias);
 
-            if (fk is null)
-                throw new InvalidOperationException(
-                    $"No FK for navigation '{node.Navigation.Name}'.");
+        joinParts.Add(joinClause);
+        AppendSelectColumns(selectParts, alias, relatedMapping);
+        AddSplitOnColumn(splitOnColumns, alias, relatedMapping);
 
-            var fkMap = ctx.ParentMapping.PropertyMappings
-                .First(pm => pm.Property == fk.ForeignKeyProperty);
-
-            var parentFk = $"{ctx.ParentAlias}.{_dialect.QuoteIdentifier(fkMap.ColumnName)}";
-            var relPk = $"{alias}.{_dialect.QuoteIdentifier(fk.PrincipalKeyColumnName)}";
-
-            joinParts.Add(
-                $"LEFT JOIN {FullTable(relMapping)} {_dialect.FormatTableAlias(alias)} ON {relPk} = {parentFk}");
-        }
-        else
-        {
-            // Collection
-            var invFk = relMapping.ForeignKeys
-                .FirstOrDefault(f => f.PrincipalEntityType == ctx.ParentMapping.EntityType);
-
-            if (invFk is null)
-                throw new InvalidOperationException(
-                    $"No inverse FK for collection '{node.Navigation.Name}'.");
-
-            var fkMap = relMapping.PropertyMappings
-                .First(pm => pm.Property == invFk.ForeignKeyProperty);
-
-            var childFk = $"{alias}.{_dialect.QuoteIdentifier(fkMap.ColumnName)}";
-
-            var parentPkProp = ctx.ParentMapping.KeyProperties.First();
-            var parentPkMap = ctx.ParentMapping.PropertyMappings
-                .First(pm => pm.Property == parentPkProp);
-
-            var parentPk = $"{ctx.ParentAlias}.{_dialect.QuoteIdentifier(parentPkMap.ColumnName)}";
-
-            joinParts.Add(
-                $"LEFT JOIN {FullTable(relMapping)} {_dialect.FormatTableAlias(alias)} ON {childFk} = {parentPk}");
-        }
-
-        // SELECT columns
-        AppendSelectColumns(selectParts, alias, alias, relMapping);
-
-        // splitOn = PK alias
-        var pkProp = relMapping.KeyProperties.First();
-        splitOnCols.Add($"{alias}__{pkProp.Name}");
-
-        // 🔁 RECURSION (ThenInclude)
+        var currentContext = new JoinContext(alias, relatedMapping);
         foreach (var child in node.Children)
         {
-            BuildNode(
-                child,
-                new JoinContext
-                {
-                    ParentAlias = alias,
-                    ParentMapping = relMapping
-                },
-                selectParts,
-                joinParts,
-                splitOnCols
-            );
+            BuildNodeJoin(child, currentContext, selectParts, joinParts, splitOnColumns);
         }
     }
 
-    private void AppendSelectColumns(List<string> selectParts, string tableAlias, string prefix, EntityMapping mapping)
+    private string BuildReferenceJoin(
+        IncludeNode node,
+        JoinContext parentContext,
+        EntityMapping relatedMapping,
+        string alias)
+    {
+        var fk = parentContext.Mapping.ForeignKeys
+            .FirstOrDefault(f => f.NavigationProperty == node.Navigation)
+            ?? throw new InvalidOperationException($"No FK found for navigation '{node.Navigation.Name}'.");
+
+        var fkMapping = parentContext.Mapping.PropertyMappings
+            .First(pm => pm.Property == fk.ForeignKeyProperty);
+
+        var parentFkColumn = FormatColumn(parentContext.Alias, fkMapping.ColumnName);
+        var relatedPkColumn = FormatColumn(alias, fk.PrincipalKeyColumnName);
+
+        return $"LEFT JOIN {FormatTable(relatedMapping)} {_dialect.FormatTableAlias(alias)} ON {relatedPkColumn} = {parentFkColumn}";
+    }
+
+    private string BuildCollectionJoin(
+        IncludeNode node,
+        JoinContext parentContext,
+        EntityMapping relatedMapping,
+        string alias)
+    {
+        var inverseFk = relatedMapping.ForeignKeys
+            .FirstOrDefault(f => f.PrincipalEntityType == parentContext.Mapping.EntityType)
+            ?? throw new InvalidOperationException($"No inverse FK found for collection '{node.Navigation.Name}'.");
+
+        var childFkMapping = relatedMapping.PropertyMappings
+            .First(pm => pm.Property == inverseFk.ForeignKeyProperty);
+
+        var parentKeyProp = parentContext.Mapping.KeyProperties.First();
+        var parentKeyMapping = parentContext.Mapping.PropertyMappings
+            .First(pm => pm.Property == parentKeyProp);
+
+        var childFkColumn = FormatColumn(alias, childFkMapping.ColumnName);
+        var parentPkColumn = FormatColumn(parentContext.Alias, parentKeyMapping.ColumnName);
+
+        return $"LEFT JOIN {FormatTable(relatedMapping)} {_dialect.FormatTableAlias(alias)} ON {childFkColumn} = {parentPkColumn}";
+    }
+
+    private void AppendSelectColumns(List<string> selectParts, string alias, EntityMapping mapping)
     {
         foreach (var pm in mapping.PropertyMappings)
         {
-            // column SQL: a."COL" AS a__COL
-            var colSql = $"{tableAlias}.{_dialect.QuoteIdentifier(pm.ColumnName)}";
-            var alias = $"{prefix}__{pm.Property.Name}";
-            selectParts.Add($"{colSql} AS {_dialect.QuoteIdentifier(alias)}");
+            var column = FormatColumn(alias, pm.ColumnName);
+            var columnAlias = $"{alias}__{pm.Property.Name}";
+            selectParts.Add($"{column} AS {_dialect.QuoteIdentifier(columnAlias)}");
         }
     }
 
-    private string FullTable(EntityMapping mapping)
+    private static void AddSplitOnColumn(List<string> splitOnColumns, string alias, EntityMapping mapping)
     {
-        if (!string.IsNullOrWhiteSpace(mapping.Schema))
-            return $"{_dialect.QuoteIdentifier(mapping.Schema)}.{_dialect.QuoteIdentifier(mapping.TableName)}";
-
-        return _dialect.QuoteIdentifier(mapping.TableName);
+        var keyProp = mapping.KeyProperties.First();
+        splitOnColumns.Add($"{alias}__{keyProp.Name}");
     }
+
+    private string BuildFinalSql(
+        EntityMapping rootMapping,
+        string rootAlias,
+        List<string> selectParts,
+        List<string> joinParts)
+    {
+        var sb = new StringBuilder();
+
+        sb.Append("SELECT ");
+        sb.Append(string.Join(", ", selectParts));
+        sb.Append(" FROM ");
+        sb.Append(FormatTable(rootMapping));
+        sb.Append(' ');
+        sb.Append(_dialect.FormatTableAlias(rootAlias));
+
+        foreach (var join in joinParts)
+        {
+            sb.Append(' ');
+            sb.Append(join);
+        }
+
+        return sb.ToString();
+    }
+
+    private string GetNextAlias()
+    {
+        _aliasIndex++;
+        return $"b{_aliasIndex}";
+    }
+
+    private string FormatColumn(string alias, string columnName)
+    {
+        return $"{alias}.{_dialect.QuoteIdentifier(columnName)}";
+    }
+
+    private string FormatTable(EntityMapping mapping)
+    {
+        if (string.IsNullOrWhiteSpace(mapping.Schema))
+            return _dialect.QuoteIdentifier(mapping.TableName);
+
+        return $"{_dialect.QuoteIdentifier(mapping.Schema)}.{_dialect.QuoteIdentifier(mapping.TableName)}";
+    }
+
+    private sealed record JoinContext(string Alias, EntityMapping Mapping);
 }

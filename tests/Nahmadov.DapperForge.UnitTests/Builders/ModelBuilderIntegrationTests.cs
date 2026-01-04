@@ -60,7 +60,8 @@ public class ModelBuilderIntegrationTests
         public EntityMapping ExposeMapping<TEntity>() where TEntity : class
         {
             var method = typeof(DapperDbContext)
-                .GetMethod("GetEntityMapping", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .GetMethods(BindingFlags.Instance | BindingFlags.NonPublic)
+                .First(m => m.Name == "GetEntityMapping" && m.IsGenericMethodDefinition)
                 .MakeGenericMethod(typeof(TEntity));
 
             return (EntityMapping)method.Invoke(this, null)!;

@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using System.Reflection;
 
 using Nahmadov.DapperForge.Core.Builders;
 using Nahmadov.DapperForge.Core.Common;
@@ -52,7 +53,8 @@ public class OracleCompositeReturningTests
         public EntityMapping ExposeMapping<TEntity>() where TEntity : class
         {
             var method = typeof(DapperDbContext)
-                .GetMethod("GetEntityMapping", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+                .GetMethods(BindingFlags.Instance | BindingFlags.NonPublic)
+                .First(m => m.Name == "GetEntityMapping" && m.IsGenericMethodDefinition)
                 .MakeGenericMethod(typeof(TEntity));
 
             return (EntityMapping)method.Invoke(this, null)!;
