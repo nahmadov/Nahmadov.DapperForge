@@ -28,7 +28,7 @@ internal sealed class DapperQueryable<TEntity> : IDapperQueryable<TEntity> where
     private readonly IncludeTree _includeTree = new();
     private IncludeNode? _lastIncludeNode;
 
-    private QuerySplittingBehavior _splittingBehavior = QuerySplittingBehavior.SplitQuery;
+    private QuerySplittingBehavior _splittingBehavior = QuerySplittingBehavior.SingleQuery;
     private bool _identityResolution = true;
 
     /// <summary>
@@ -173,10 +173,25 @@ internal sealed class DapperQueryable<TEntity> : IDapperQueryable<TEntity> where
             return list;
 
         if (_splittingBehavior == QuerySplittingBehavior.SingleQuery)
-            throw new NotSupportedException("AsSingleQuery is not implemented yet. It requires join SQL + multi-mapping + graph fixup.");
+        {
+            var planBuilder = new SingleQueryPlanBuilder(_generator.Dialect, t => _context.GetEntityMapping(t));
+            var plan = planBuilder.Build(_mapping, _includeTree);
+            var (finalSql, finalParams) = ApplyWhereOrderPaging(plan.Sql);
+            var exec = new SingleQueryIncludeExecutor(_context);
+            var roots = await exec.ExecuteAsync<TEntity>(
+                sql: finalSql,
+                parameters: finalParams,
+                splitOn: plan.SplitOn,
+                rootMapping: _mapping,
+                includeTree: _includeTree);
+            return roots;
+        }
 
-        var loader = new SplitIncludeLoader(_context, _generator.Dialect, _identityResolution);
-        await loader.LoadAsync(_mapping, list, _includeTree);
+        if (_splittingBehavior == QuerySplittingBehavior.SplitQuery)
+        {
+            var loader = new SplitIncludeLoader(_context, _generator.Dialect, _identityResolution);
+            await loader.LoadAsync(_mapping, list, _includeTree);
+        }
 
         return list;
     }
@@ -324,5 +339,47 @@ internal sealed class DapperQueryable<TEntity> : IDapperQueryable<TEntity> where
             return pi2;
 
         throw new NotSupportedException($"Expression '{body}' is not a property access.");
+    }
+
+
+    private (string sql, object parameters) ApplyWhereOrderPaging(string baseSql)
+    {
+        var sql = baseSql;
+        object parameters = new Dictionary<string, object?>();
+
+        // WHERE
+        if (_predicate is not null)
+        {
+            var visitor = new PredicateVisitor<TEntity>(_mapping, _generator.Dialect);
+            var (whereClause, whereParams) = visitor.Translate(_predicate, _ignoreCase);
+            sql = $"{sql} WHERE {whereClause}";
+            parameters = whereParams;
+        }
+
+        // ORDER BY
+        if (_orderBy is not null)
+        {
+            var visitor = new OrderingVisitor<TEntity>(_mapping, _generator.Dialect);
+            var orderClause = visitor.Translate(_orderBy, _isOrderByDescending);
+            if (!string.IsNullOrEmpty(orderClause))
+                sql = $"{sql} ORDER BY {orderClause}";
+        }
+        else if (_skipCount > 0 || _takeCount < int.MaxValue)
+        {
+            // Stable ordering for paging
+            if (_mapping.KeyProperties.Count > 0)
+            {
+                var keyProp = _mapping.KeyProperties[0];
+                var keyMapping = _mapping.PropertyMappings.First(pm => pm.Property == keyProp);
+                var orderClause = $"a.{_generator.Dialect.QuoteIdentifier(keyMapping.ColumnName)}";
+                sql = $"{sql} ORDER BY {orderClause}";
+            }
+        }
+
+        // PAGING
+        if (_skipCount > 0 || _takeCount < int.MaxValue)
+            sql = BuildPaginatedSql(sql, _skipCount, _takeCount);
+
+        return (sql, parameters);
     }
 }

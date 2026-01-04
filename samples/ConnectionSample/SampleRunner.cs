@@ -271,7 +271,7 @@ public class SampleRunner(AppDapperDbContext db)
             .Where(c => c.IsActive)
             .ToListAsync();
 
-        foreach (var customer in customersWithTickets)
+        foreach (var customer in customersWithTickets.Where(x => x.SupportTickets.Count != 0))
         {
             Console.WriteLine($"  Customer: {customer.Name} - {customer.SupportTickets.Count} ticket(s)");
             foreach (var ticket in customer.SupportTickets)

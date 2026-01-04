@@ -4,7 +4,7 @@ namespace Nahmadov.DapperForge.Core.Query;
 
 internal sealed class IncludeTree
 {
-    public List<IncludeNode> Roots { get; } = new();
+    public List<IncludeNode> Roots { get; } = [];
 }
 
 internal sealed class IncludeNode

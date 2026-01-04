@@ -6,6 +6,7 @@ using Dapper;
 
 using Nahmadov.DapperForge.Core.Builders;
 using Nahmadov.DapperForge.Core.Common;
+using Nahmadov.DapperForge.Core.Extensions;
 using Nahmadov.DapperForge.Core.Interfaces;
 using Nahmadov.DapperForge.Core.Mapping;
 
@@ -96,6 +97,14 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
         return connection.QueryFirstOrDefaultAsync<T>(sql, param, transaction);
     }
 
+    public Task<List<TEntity?>> QueryWithTypesAsync<TEntity>(string sql, Type[] types, object parameters, string splitOn, Func<object?[], TEntity?> map, IDbTransaction? transaction = null)
+    {
+        LogSql(sql);
+        var connection = transaction?.Connection ?? Connection;
+        return connection.QueryAsync(sql, types, objs => map(objs), param: parameters, transaction: transaction, splitOn: splitOn)
+            .ContinueWith(t => t.Result.ToList());
+    }
+
     /// <summary>
     /// Executes a non-query command and returns affected row count.
     /// </summary>
@@ -168,6 +177,11 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
         foreach (var kvp in builder.Build())
         {
             _model[kvp.Key] = kvp.Value;
+        }
+
+        foreach (var kv in _model) // Dictionary<Type, EntityMapping>
+        {
+            DapperTypeMapExtensions.SetPrefixInsensitiveMap(kv.Key);
         }
 
         _modelBuilt = true;
