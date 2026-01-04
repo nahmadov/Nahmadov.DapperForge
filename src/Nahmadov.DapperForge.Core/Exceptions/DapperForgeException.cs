@@ -170,6 +170,132 @@ public class DapperReadOnlyException : DapperOperationException
 }
 
 /// <summary>
+/// Exception thrown when a database command execution fails.
+/// Wraps the underlying database exception with operation context.
+/// </summary>
+public class DapperExecutionException : DapperOperationException
+{
+    /// <summary>
+    /// Gets the SQL that was being executed when the error occurred.
+    /// </summary>
+    public string? Sql { get; }
+
+    /// <summary>
+    /// Initializes a new instance of <see cref="DapperExecutionException"/>.
+    /// </summary>
+    /// <param name="operationType">Type of the failed operation.</param>
+    /// <param name="entityName">Name of the entity involved.</param>
+    /// <param name="sql">SQL statement that failed.</param>
+    /// <param name="innerException">The underlying database exception.</param>
+    public DapperExecutionException(
+        OperationType operationType,
+        string entityName,
+        string? sql,
+        Exception innerException)
+        : base(operationType, FormatMessage(operationType, entityName, sql, innerException), innerException)
+    {
+        EntityName = entityName;
+        Sql = sql;
+    }
+
+    /// <summary>
+    /// Initializes a new instance of <see cref="DapperExecutionException"/> without entity context.
+    /// </summary>
+    /// <param name="operationType">Type of the failed operation.</param>
+    /// <param name="sql">SQL statement that failed.</param>
+    /// <param name="innerException">The underlying database exception.</param>
+    public DapperExecutionException(
+        OperationType operationType,
+        string? sql,
+        Exception innerException)
+        : base(operationType, FormatMessage(operationType, null, sql, innerException), innerException)
+    {
+        Sql = sql;
+    }
+
+    private static string FormatMessage(OperationType operationType, string? entityName, string? sql, Exception inner)
+    {
+        var entityPart = string.IsNullOrEmpty(entityName) ? "" : $" on entity '{entityName}'";
+        var sqlPart = string.IsNullOrEmpty(sql) ? "" : $"\nSQL: {TruncateSql(sql)}";
+        return $"{operationType} operation failed{entityPart}: {inner.Message}{sqlPart}";
+    }
+
+    private static string TruncateSql(string sql)
+    {
+        const int maxLength = 500;
+        return sql.Length <= maxLength ? sql : sql[..maxLength] + "...";
+    }
+
+    /// <summary>
+    /// Gets the name of the entity involved in the failed operation.
+    /// </summary>
+    public new string? EntityName { get; }
+}
+
+/// <summary>
+/// Exception thrown when setting a generated key value on an entity fails.
+/// This is a non-critical error - the insert succeeded but the key could not be assigned.
+/// </summary>
+public class DapperKeyAssignmentException : DapperForgeException
+{
+    /// <summary>
+    /// Gets the name of the entity.
+    /// </summary>
+    public string EntityName { get; }
+
+    /// <summary>
+    /// Gets the name of the key property.
+    /// </summary>
+    public string KeyPropertyName { get; }
+
+    /// <summary>
+    /// Gets the generated key value that could not be assigned.
+    /// </summary>
+    public object? KeyValue { get; }
+
+    /// <summary>
+    /// Initializes a new instance of <see cref="DapperKeyAssignmentException"/>.
+    /// </summary>
+    public DapperKeyAssignmentException(
+        string entityName,
+        string keyPropertyName,
+        object? keyValue,
+        Exception innerException)
+        : base($"Failed to assign generated key '{keyPropertyName}' with value '{keyValue}' to entity '{entityName}'. " +
+               $"The insert succeeded but the entity's key property was not updated. Error: {innerException.Message}",
+               innerException)
+    {
+        EntityName = entityName;
+        KeyPropertyName = keyPropertyName;
+        KeyValue = keyValue;
+    }
+}
+
+/// <summary>
+/// Exception thrown when a connection cannot be established or is in an invalid state.
+/// </summary>
+public class DapperConnectionException : DapperForgeException
+{
+    /// <summary>
+    /// Initializes a new instance of <see cref="DapperConnectionException"/>.
+    /// </summary>
+    /// <param name="message">The error message.</param>
+    public DapperConnectionException(string message) : base(message)
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of <see cref="DapperConnectionException"/> with an inner exception.
+    /// </summary>
+    /// <param name="message">The error message.</param>
+    /// <param name="innerException">The inner exception.</param>
+    public DapperConnectionException(string message, Exception innerException)
+        : base(message, innerException)
+    {
+    }
+}
+
+/// <summary>
 /// Enumerates the types of database operations.
 /// </summary>
 public enum OperationType

@@ -2,6 +2,7 @@ using System.Data;
 using System.Data.Common;
 
 using Nahmadov.DapperForge.Core.Common;
+using Nahmadov.DapperForge.Core.Exceptions;
 using Nahmadov.DapperForge.UnitTests.Fakes;
 using Nahmadov.DapperForge.SqlServer;
 using Xunit;
@@ -83,7 +84,7 @@ public class DapperDbContextAsyncTests
             Dialect = null // Missing dialect
         };
 
-        var exception = Assert.Throws<InvalidOperationException>(() =>
+        var exception = Assert.Throws<DapperConfigurationException>(() =>
         {
             new TestDapperDbContext(options);
         });
@@ -100,7 +101,7 @@ public class DapperDbContextAsyncTests
             Dialect = SqlServerDialect.Instance
         };
 
-        var exception = Assert.Throws<InvalidOperationException>(() =>
+        var exception = Assert.Throws<DapperConfigurationException>(() =>
         {
             new TestDapperDbContext(options);
         });

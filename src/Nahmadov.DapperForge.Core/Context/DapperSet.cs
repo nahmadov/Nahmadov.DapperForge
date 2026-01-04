@@ -115,10 +115,12 @@ public sealed class DapperSet<TEntity> where TEntity : class
     /// </summary>
     /// <param name="entity">Entity to insert.</param>
     /// <param name="transaction">Optional transaction for the operation.</param>
-    public Task<int> InsertAsync(TEntity entity, IDbTransaction? transaction = null)
+    public async Task<int> InsertAsync(TEntity entity, IDbTransaction? transaction = null)
     {
+        ArgumentNullException.ThrowIfNull(entity);
         EnsureCanMutate();
         EntityValidator<TEntity>.ValidateForInsert(entity, _mapping);
+
         if (string.IsNullOrWhiteSpace(_generator.InsertSql))
         {
             throw new DapperConfigurationException(
@@ -126,7 +128,18 @@ public sealed class DapperSet<TEntity> where TEntity : class
                 "Insert SQL is not configured.");
         }
 
-        return _context.ExecuteAsync(_generator.InsertSql, entity, transaction);
+        try
+        {
+            return await _context.ExecuteAsync(_generator.InsertSql, entity, transaction);
+        }
+        catch (Exception ex) when (ex is not DapperForgeException)
+        {
+            throw new DapperExecutionException(
+                OperationType.Insert,
+                typeof(TEntity).Name,
+                _generator.InsertSql,
+                ex);
+        }
     }
 
     /// <summary>
@@ -136,8 +149,10 @@ public sealed class DapperSet<TEntity> where TEntity : class
     /// <param name="transaction">Optional transaction for the operation.</param>
     public async Task<int> UpdateAsync(TEntity entity, IDbTransaction? transaction = null)
     {
+        ArgumentNullException.ThrowIfNull(entity);
         EnsureCanMutate();
         EntityValidator<TEntity>.ValidateForUpdate(entity, _mapping);
+
         if (string.IsNullOrWhiteSpace(_generator.UpdateSql))
         {
             throw new DapperConfigurationException(
@@ -145,7 +160,20 @@ public sealed class DapperSet<TEntity> where TEntity : class
                 "Update SQL is not configured or no columns are updatable.");
         }
 
-        var affected = await _context.ExecuteAsync(_generator.UpdateSql, entity, transaction);
+        int affected;
+        try
+        {
+            affected = await _context.ExecuteAsync(_generator.UpdateSql, entity, transaction);
+        }
+        catch (Exception ex) when (ex is not DapperForgeException)
+        {
+            throw new DapperExecutionException(
+                OperationType.Update,
+                typeof(TEntity).Name,
+                _generator.UpdateSql,
+                ex);
+        }
+
         if (affected == 0)
         {
             throw new DapperConcurrencyException(OperationType.Update, typeof(TEntity).Name);
@@ -161,7 +189,9 @@ public sealed class DapperSet<TEntity> where TEntity : class
     /// <param name="transaction">Optional transaction for the operation.</param>
     public async Task<int> DeleteAsync(TEntity entity, IDbTransaction? transaction = null)
     {
+        ArgumentNullException.ThrowIfNull(entity);
         EnsureCanMutate();
+
         if (string.IsNullOrWhiteSpace(_generator.DeleteByIdSql))
         {
             throw new DapperConfigurationException(
@@ -169,7 +199,20 @@ public sealed class DapperSet<TEntity> where TEntity : class
                 "Delete SQL is not configured.");
         }
 
-        var affected = await _context.ExecuteAsync(_generator.DeleteByIdSql, entity, transaction);
+        int affected;
+        try
+        {
+            affected = await _context.ExecuteAsync(_generator.DeleteByIdSql, entity, transaction);
+        }
+        catch (Exception ex) when (ex is not DapperForgeException)
+        {
+            throw new DapperExecutionException(
+                OperationType.Delete,
+                typeof(TEntity).Name,
+                _generator.DeleteByIdSql,
+                ex);
+        }
+
         if (affected == 0)
         {
             throw new DapperConcurrencyException(OperationType.Delete, typeof(TEntity).Name);
@@ -185,6 +228,7 @@ public sealed class DapperSet<TEntity> where TEntity : class
     /// <param name="transaction">Optional transaction for the operation.</param>
     public async Task<int> DeleteByIdAsync(object key, IDbTransaction? transaction = null)
     {
+        ArgumentNullException.ThrowIfNull(key);
         EnsureCanMutate();
 
         if (_mapping.KeyProperties.Count == 0)
@@ -203,7 +247,20 @@ public sealed class DapperSet<TEntity> where TEntity : class
 
         var param = BuildKeyParameters(key);
 
-        var affected = await _context.ExecuteAsync(_generator.DeleteByIdSql, param, transaction);
+        int affected;
+        try
+        {
+            affected = await _context.ExecuteAsync(_generator.DeleteByIdSql, param, transaction);
+        }
+        catch (Exception ex) when (ex is not DapperForgeException)
+        {
+            throw new DapperExecutionException(
+                OperationType.Delete,
+                typeof(TEntity).Name,
+                _generator.DeleteByIdSql,
+                ex);
+        }
+
         if (affected == 0)
         {
             throw new DapperConcurrencyException(OperationType.Delete, typeof(TEntity).Name);
@@ -220,77 +277,114 @@ public sealed class DapperSet<TEntity> where TEntity : class
     /// <param name="transaction">Optional transaction for the operation.</param>
     public async Task<TKey> InsertAndGetIdAsync<TKey>(TEntity entity, IDbTransaction? transaction = null)
     {
+        ArgumentNullException.ThrowIfNull(entity);
         EnsureCanMutate();
         EntityValidator<TEntity>.ValidateForInsert(entity, _mapping);
 
         if (_mapping.KeyProperties.Count != 1)
         {
-            throw new NotSupportedException(
-                $"InsertAndGetIdAsync requires a single key on entity '{typeof(TEntity).Name}'.");
+            throw new DapperConfigurationException(
+                typeof(TEntity).Name,
+                "InsertAndGetIdAsync requires a single key property.");
         }
 
         if (!_generator.IsKeyGenerated)
         {
-            var keyPropGenerated = _generator.KeyProperty ?? throw new NotSupportedException(
-                    $"InsertAndGetIdAsync requires a generated key property on '{typeof(TEntity).Name}'.");
+            var keyPropGenerated = _generator.KeyProperty
+                ?? throw new DapperConfigurationException(
+                    typeof(TEntity).Name,
+                    "InsertAndGetIdAsync requires a key property.");
+
             var value = keyPropGenerated.GetValue(entity);
             if (value is TKey typed)
                 return typed;
 
-            throw new NotSupportedException(
-                $"Key '{keyPropGenerated.Name}' on '{typeof(TEntity).Name}' is not generated by the database. " +
+            throw new DapperConfigurationException(
+                typeof(TEntity).Name,
+                $"Key '{keyPropGenerated.Name}' is not generated by the database. " +
                 "Use InsertAsync and retrieve the key from the entity instance.");
         }
 
         if (_generator.InsertReturningIdSql is null)
         {
-            throw new NotSupportedException(
+            throw new DapperConfigurationException(
+                typeof(TEntity).Name,
                 $"Dialect '{_generator.DialectName}' does not support InsertAndGetIdAsync. " +
                 "Use InsertAsync and set the key manually or extend the dialect.");
         }
 
         TKey? id;
-        if (string.Equals(_generator.DialectName, "Oracle", StringComparison.OrdinalIgnoreCase))
+        try
         {
-            id = await ExecuteOracleInsertReturningAsync<TKey>(entity, transaction);
+            if (string.Equals(_generator.DialectName, "Oracle", StringComparison.OrdinalIgnoreCase))
+            {
+                id = await ExecuteOracleInsertReturningAsync<TKey>(entity, transaction);
+            }
+            else
+            {
+                id = await _context.QueryFirstOrDefaultAsync<TKey>(_generator.InsertReturningIdSql, entity, transaction);
+            }
         }
-        else
+        catch (Exception ex) when (ex is not DapperForgeException)
         {
-            id = await _context.QueryFirstOrDefaultAsync<TKey>(_generator.InsertReturningIdSql, entity, transaction);
+            throw new DapperExecutionException(
+                OperationType.Insert,
+                typeof(TEntity).Name,
+                _generator.InsertReturningIdSql,
+                ex);
         }
 
         if (id == null || EqualityComparer<TKey>.Default.Equals(id, default!))
         {
-            throw new InvalidOperationException(
-                $"Identity value returned NULL or default for entity '{typeof(TEntity).Name}'. " +
-                "This likely means: (1) insert failed, (2) the provider cannot return identity, " +
+            throw new DapperOperationException(
+                OperationType.Insert,
+                typeof(TEntity).Name,
+                "Identity value returned NULL or default. " +
+                "This may indicate: (1) insert failed silently, (2) the provider cannot return identity, " +
                 "(3) a trigger suppressed the identity value, or (4) SqlDialect needs adjustments.");
         }
 
-        var keyProp = _generator.KeyProperty;
-        try
-        {
-            if (keyProp is not null)
-            {
-                var targetType = keyProp.PropertyType;
-
-                object? converted = id;
-                if (!targetType.IsAssignableFrom(typeof(TKey)))
-                {
-                    converted = Convert.ChangeType(id, targetType);
-                }
-
-                keyProp.SetValue(entity, converted);
-            }
-        }
-        catch
-        {
-        }
+        AssignKeyToEntity(entity, id);
 
         return id;
     }
 
     #endregion
+
+    /// <summary>
+    /// Attempts to assign a generated key value to the entity.
+    /// Throws <see cref="DapperKeyAssignmentException"/> if assignment fails.
+    /// </summary>
+    /// <typeparam name="TKey">Type of the key value.</typeparam>
+    /// <param name="entity">Entity to assign the key to.</param>
+    /// <param name="keyValue">Generated key value.</param>
+    private void AssignKeyToEntity<TKey>(TEntity entity, TKey keyValue)
+    {
+        var keyProp = _generator.KeyProperty;
+        if (keyProp is null)
+            return;
+
+        try
+        {
+            var targetType = keyProp.PropertyType;
+            object? converted = keyValue;
+
+            if (!targetType.IsAssignableFrom(typeof(TKey)))
+            {
+                converted = Convert.ChangeType(keyValue, targetType);
+            }
+
+            keyProp.SetValue(entity, converted);
+        }
+        catch (Exception ex) when (ex is InvalidCastException or FormatException or OverflowException or ArgumentException or TargetException)
+        {
+            throw new DapperKeyAssignmentException(
+                entityName: typeof(TEntity).Name,
+                keyPropertyName: keyProp.Name,
+                keyValue: keyValue,
+                innerException: ex);
+        }
+    }
 
     /// <summary>
     /// Validates that the entity supports mutation operations.

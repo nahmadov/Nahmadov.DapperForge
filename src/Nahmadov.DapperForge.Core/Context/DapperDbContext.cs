@@ -6,6 +6,7 @@ using Dapper;
 
 using Nahmadov.DapperForge.Core.Builders;
 using Nahmadov.DapperForge.Core.Common;
+using Nahmadov.DapperForge.Core.Exceptions;
 using Nahmadov.DapperForge.Core.Extensions;
 using Nahmadov.DapperForge.Core.Interfaces;
 using Nahmadov.DapperForge.Core.Mapping;
@@ -33,15 +34,24 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
     protected DapperDbContext(DapperDbContextOptions options)
     {
         _options = options ?? throw new ArgumentNullException(nameof(options));
+
         if (options.Dialect is null)
-            throw new InvalidOperationException("Dialect is not configured. Use a database provider extension (UseSqlServer, UseOracle, etc.).");
+        {
+            throw new DapperConfigurationException(
+                "Dialect is not configured. Use a database provider extension (UseSqlServer, UseOracle, etc.).");
+        }
+
         if (_options.ConnectionFactory is null)
-            throw new InvalidOperationException("ConnectionFactory is not configured.");
+        {
+            throw new DapperConfigurationException(
+                "ConnectionFactory is not configured. Provide a connection factory in the options.");
+        }
     }
 
     /// <summary>
     /// Gets an open database connection, creating one if necessary.
     /// </summary>
+    /// <exception cref="DapperConnectionException">Thrown when connection cannot be established.</exception>
     protected IDbConnection Connection
     {
         get
@@ -57,13 +67,39 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
                     _connection = null;
                 }
             }
-            if (_options.ConnectionFactory is null)
-                throw new InvalidOperationException("ConnectionFactory is not configured.");
-            _connection ??= _options.ConnectionFactory();
-            if (_connection.State != ConnectionState.Open)
-                _connection.Open();
 
-            return _connection;
+            if (_options.ConnectionFactory is null)
+            {
+                throw new DapperConfigurationException(
+                    "ConnectionFactory is not configured. Provide a connection factory in the options.");
+            }
+
+            try
+            {
+                _connection ??= _options.ConnectionFactory();
+
+                if (_connection is null)
+                {
+                    throw new DapperConnectionException(
+                        "ConnectionFactory returned null. Ensure the factory creates a valid connection.");
+                }
+
+                if (_connection.State != ConnectionState.Open)
+                {
+                    _connection.Open();
+                }
+
+                return _connection;
+            }
+            catch (DapperForgeException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                throw new DapperConnectionException(
+                    $"Failed to establish database connection: {ex.Message}", ex);
+            }
         }
     }
 
@@ -242,42 +278,52 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
     /// </summary>
     /// <typeparam name="TEntity">Entity type.</typeparam>
     /// <returns>Entity mapping metadata.</returns>
+    /// <exception cref="DapperConfigurationException">Thrown when entity is not registered or mapping not found.</exception>
     internal EntityMapping GetEntityMapping<TEntity>() where TEntity : class
     {
         EnsureModelBuilt();
         var type = typeof(TEntity);
 
-
         if (!_registeredEntityTypes.Contains(type))
         {
-            throw new InvalidOperationException(
-                $"Entity '{type.Name}' is not registered in this context. " +
+            throw new DapperConfigurationException(
+                type.Name,
+                $"Entity is not registered in this context. " +
                 $"Declare it as a public DapperSet<{type.Name}> property on '{GetType().Name}'.");
         }
 
         if (_model.TryGetValue(type, out var mapping))
             return mapping;
 
-        throw new InvalidOperationException(
-                $"Mapping for entity '{type.Name}' was not built. Ensure model building includes this entity.");
+        throw new DapperConfigurationException(
+            type.Name,
+            "Mapping was not built. Ensure model building includes this entity.");
     }
 
+    /// <summary>
+    /// Retrieves the mapping for a given entity type, building the model if necessary.
+    /// </summary>
+    /// <param name="entityType">Entity type.</param>
+    /// <returns>Entity mapping metadata.</returns>
+    /// <exception cref="DapperConfigurationException">Thrown when entity is not registered or mapping not found.</exception>
     internal EntityMapping GetEntityMapping(Type entityType)
     {
         EnsureModelBuilt();
 
         if (!_registeredEntityTypes.Contains(entityType))
         {
-            throw new InvalidOperationException(
-                $"Entity '{entityType.Name}' is not registered in this context. " +
+            throw new DapperConfigurationException(
+                entityType.Name,
+                $"Entity is not registered in this context. " +
                 $"Declare it as a public DapperSet<{entityType.Name}> property on '{GetType().Name}'.");
         }
 
         if (_model.TryGetValue(entityType, out var mapping))
             return mapping;
 
-        throw new InvalidOperationException(
-            $"Mapping for entity '{entityType.Name}' was not built. Ensure it is registered in the model.");
+        throw new DapperConfigurationException(
+            entityType.Name,
+            "Mapping was not built. Ensure it is registered in the model.");
     }
 
     internal object GetSqlGenerator(Type entityType)
@@ -291,7 +337,10 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
             var mapping = GetEntityMapping(t);
 
             var genType = typeof(SqlGenerator<>).MakeGenericType(t);
-            return Activator.CreateInstance(genType, _options.Dialect!, mapping) ?? throw new InvalidOperationException($"Could not create SqlGenerator for '{t.Name}'.");
+            return Activator.CreateInstance(genType, _options.Dialect!, mapping)
+                ?? throw new DapperConfigurationException(
+                    t.Name,
+                    "Could not create SqlGenerator. This is likely an internal error.");
         });
     }
 
@@ -300,12 +349,13 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
     /// </summary>
     internal static string GetSelectAllSqlFromGenerator(object generator)
     {
-        var prop = generator.GetType().GetProperty("SelectAllSql", BindingFlags.Public | BindingFlags.Instance);
-        if (prop is null)
-            throw new InvalidOperationException($"Generator '{generator.GetType().Name}' has no SelectAllSql property.");
+        var prop = generator.GetType().GetProperty("SelectAllSql", BindingFlags.Public | BindingFlags.Instance)
+            ?? throw new DapperConfigurationException(
+                $"Generator '{generator.GetType().Name}' has no SelectAllSql property. This is an internal error.");
 
         return (string)(prop.GetValue(generator)
-            ?? throw new InvalidOperationException($"SelectAllSql is null on '{generator.GetType().Name}'."));
+            ?? throw new DapperConfigurationException(
+                $"SelectAllSql is null on '{generator.GetType().Name}'. This is an internal error."));
     }
 
     /// <summary>
