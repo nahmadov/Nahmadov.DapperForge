@@ -49,7 +49,7 @@ internal sealed class SingleQueryPlanBuilder(ISqlDialect dialect, Func<Type, Ent
     /// Recursively counts total number of nodes in the Include tree.
     /// Used to determine the correct type count for Dapper multi-mapping.
     /// </summary>
-    private static int CountNodesRecursive(List<IncludeNode> nodes)
+    private static int CountNodesRecursive(IReadOnlyList<IncludeNode> nodes)
     {
         var count = nodes.Count;
         foreach (var node in nodes)

@@ -155,7 +155,7 @@ public sealed class DapperSet<TEntity> where TEntity : class
     /// </remarks>
     public async Task<TEntity> FirstAsync(Expression<Func<TEntity, bool>> predicate, bool ignoreCase = false)
     {
-        var result = await FirstOrDefaultAsync(predicate, ignoreCase) ?? throw new InvalidOperationException("Sequence contains no elements.");
+        var result = await FirstOrDefaultAsync(predicate, ignoreCase).ConfigureAwait(false) ?? throw new InvalidOperationException("Sequence contains no elements.");
         return result;
     }
 
@@ -181,7 +181,7 @@ public sealed class DapperSet<TEntity> where TEntity : class
     /// <param name="ignoreCase">When true, uses case-insensitive comparison where supported.</param>
     public async Task<bool> AnyAsync(Expression<Func<TEntity, bool>> predicate, bool ignoreCase = false)
     {
-        var count = await CountAsync(predicate, ignoreCase);
+        var count = await CountAsync(predicate, ignoreCase).ConfigureAwait(false);
         return count > 0;
     }
 
@@ -196,7 +196,7 @@ public sealed class DapperSet<TEntity> where TEntity : class
         var (whereClause, parameters) = visitor.Translate(predicate, ignoreCase);
 
         var countSql = $"SELECT COUNT(*) FROM {_generator.TableName} AS a WHERE NOT ({whereClause})";
-        var countNotMatching = await _context.QueryFirstOrDefaultAsync<long>(countSql, parameters);
+        var countNotMatching = await _context.QueryFirstOrDefaultAsync<long>(countSql, parameters).ConfigureAwait(false);
 
         return countNotMatching == 0;
     }
@@ -258,7 +258,7 @@ public sealed class DapperSet<TEntity> where TEntity : class
 
         try
         {
-            return await _context.ExecuteAsync(_generator.InsertSql, entity, transaction);
+            return await _context.ExecuteAsync(_generator.InsertSql, entity, transaction).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is not DapperForgeException)
         {
@@ -313,7 +313,7 @@ public sealed class DapperSet<TEntity> where TEntity : class
         int affected;
         try
         {
-            affected = await _context.ExecuteAsync(_generator.UpdateSql, entity, transaction);
+            affected = await _context.ExecuteAsync(_generator.UpdateSql, entity, transaction).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is not DapperForgeException)
         {
@@ -352,7 +352,7 @@ public sealed class DapperSet<TEntity> where TEntity : class
         int affected;
         try
         {
-            affected = await _context.ExecuteAsync(_generator.DeleteByIdSql, entity, transaction);
+            affected = await _context.ExecuteAsync(_generator.DeleteByIdSql, entity, transaction).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is not DapperForgeException)
         {
@@ -400,7 +400,7 @@ public sealed class DapperSet<TEntity> where TEntity : class
         int affected;
         try
         {
-            affected = await _context.ExecuteAsync(_generator.DeleteByIdSql, param, transaction);
+            affected = await _context.ExecuteAsync(_generator.DeleteByIdSql, param, transaction).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is not DapperForgeException)
         {
@@ -501,11 +501,11 @@ public sealed class DapperSet<TEntity> where TEntity : class
         {
             if (string.Equals(_generator.DialectName, "Oracle", StringComparison.OrdinalIgnoreCase))
             {
-                id = await ExecuteOracleInsertReturningAsync<TKey>(entity, transaction);
+                id = await ExecuteOracleInsertReturningAsync<TKey>(entity, transaction).ConfigureAwait(false);
             }
             else
             {
-                id = await _context.QueryFirstOrDefaultAsync<TKey>(_generator.InsertReturningIdSql, entity, transaction);
+                id = await _context.QueryFirstOrDefaultAsync<TKey>(_generator.InsertReturningIdSql, entity, transaction).ConfigureAwait(false);
             }
         }
         catch (Exception ex) when (ex is not DapperForgeException)
@@ -656,7 +656,7 @@ public sealed class DapperSet<TEntity> where TEntity : class
         {
             parameters.Add(keyProp.Name, dbType: DbType.Object, direction: ParameterDirection.Output);
         }
-        await _context.ExecuteAsync(_generator.InsertReturningIdSql!, parameters, transaction);
+        await _context.ExecuteAsync(_generator.InsertReturningIdSql!, parameters, transaction).ConfigureAwait(false);
 
         return parameters.Get<TKey>(keyProp.Name);
     }

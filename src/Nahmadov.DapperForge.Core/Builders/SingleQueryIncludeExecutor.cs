@@ -39,7 +39,7 @@ internal sealed class SingleQueryIncludeExecutor
             types: types,
             parameters: parameters,
             splitOn: splitOn,
-            map: objs => MapRow<TEntity>(objs, rootMapping, includeTree));
+            map: objs => MapRow<TEntity>(objs, rootMapping, includeTree)).ConfigureAwait(false);
 
         return DeduplicateRoots(rows, rootMapping);
     }
@@ -59,7 +59,7 @@ internal sealed class SingleQueryIncludeExecutor
     /// Recursively collects all related entity types from the Include tree.
     /// This ensures multi-level ThenInclude chains are properly supported.
     /// </summary>
-    private static void CollectTypesRecursive(List<IncludeNode> nodes, List<Type> types)
+    private static void CollectTypesRecursive(IReadOnlyList<IncludeNode> nodes, List<Type> types)
     {
         foreach (var node in nodes)
         {

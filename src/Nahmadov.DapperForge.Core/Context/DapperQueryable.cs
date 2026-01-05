@@ -173,17 +173,17 @@ internal sealed class DapperQueryable<TEntity> : IDapperQueryable<TEntity> where
     {
         if (!_includeTree.HasIncludes)
         {
-            return await ExecuteSimpleQueryAsync();
+            return await ExecuteSimpleQueryAsync().ConfigureAwait(false);
         }
 
         return _splittingBehavior == QuerySplittingBehavior.SingleQuery
-            ? await ExecuteSingleQueryWithIncludesAsync()
-            : await ExecuteSplitQueryWithIncludesAsync();
+            ? await ExecuteSingleQueryWithIncludesAsync().ConfigureAwait(false)
+            : await ExecuteSplitQueryWithIncludesAsync().ConfigureAwait(false);
     }
 
     public async Task<TEntity> FirstAsync()
     {
-        var result = await FirstOrDefaultAsync();
+        var result = await FirstOrDefaultAsync().ConfigureAwait(false);
         if (result is null)
             throw new InvalidOperationException("Sequence contains no elements.");
         return result;
@@ -193,12 +193,12 @@ internal sealed class DapperQueryable<TEntity> : IDapperQueryable<TEntity> where
     {
         var sql = BuildSql();
         var parameters = BuildParameters();
-        return await _context.QueryFirstOrDefaultAsync<TEntity>(sql, parameters);
+        return await _context.QueryFirstOrDefaultAsync<TEntity>(sql, parameters).ConfigureAwait(false);
     }
 
     public async Task<TEntity> SingleAsync()
     {
-        var result = await SingleOrDefaultAsync();
+        var result = await SingleOrDefaultAsync().ConfigureAwait(false);
         if (result is null)
             throw new InvalidOperationException("Sequence contains no elements.");
         return result;
@@ -206,7 +206,7 @@ internal sealed class DapperQueryable<TEntity> : IDapperQueryable<TEntity> where
 
     public async Task<TEntity?> SingleOrDefaultAsync()
     {
-        var results = await ExecuteSimpleQueryAsync();
+        var results = await ExecuteSimpleQueryAsync().ConfigureAwait(false);
         var list = results.ToList();
 
         if (list.Count > 1)
@@ -218,7 +218,7 @@ internal sealed class DapperQueryable<TEntity> : IDapperQueryable<TEntity> where
 
     public async Task<TEntity> LastAsync()
     {
-        var result = await LastOrDefaultAsync();
+        var result = await LastOrDefaultAsync().ConfigureAwait(false);
         if (result is null)
             throw new InvalidOperationException("Sequence contains no elements.");
         return result;
@@ -226,14 +226,14 @@ internal sealed class DapperQueryable<TEntity> : IDapperQueryable<TEntity> where
 
     public async Task<TEntity?> LastOrDefaultAsync()
     {
-        var results = await ExecuteSimpleQueryAsync();
+        var results = await ExecuteSimpleQueryAsync().ConfigureAwait(false);
         var list = results.ToList();
         return list.LastOrDefault();
     }
 
     public async Task<bool> AnyAsync()
     {
-        var count = await CountAsync();
+        var count = await CountAsync().ConfigureAwait(false);
         return count > 0;
     }
 
@@ -242,19 +242,19 @@ internal sealed class DapperQueryable<TEntity> : IDapperQueryable<TEntity> where
         var baseSql = $"SELECT COUNT(*) FROM {_generator.TableName} AS a";
 
         if (_predicate is null)
-            return await _context.QueryFirstOrDefaultAsync<long>(baseSql, new Dictionary<string, object?>());
+            return await _context.QueryFirstOrDefaultAsync<long>(baseSql, new Dictionary<string, object?>()).ConfigureAwait(false);
 
         var visitor = new PredicateVisitor<TEntity>(_mapping, _generator.Dialect);
         var (whereClause, parameters) = visitor.Translate(_predicate, _ignoreCase);
 
-        return await _context.QueryFirstOrDefaultAsync<long>($"{baseSql} WHERE {whereClause}", parameters);
+        return await _context.QueryFirstOrDefaultAsync<long>($"{baseSql} WHERE {whereClause}", parameters).ConfigureAwait(false);
     }
 
     private async Task<IEnumerable<TEntity>> ExecuteSimpleQueryAsync()
     {
         var sql = BuildSql();
         var parameters = BuildParameters();
-        return await _context.QueryAsync<TEntity>(sql, parameters);
+        return await _context.QueryAsync<TEntity>(sql, parameters).ConfigureAwait(false);
     }
 
     private async Task<List<TEntity>> ExecuteSingleQueryWithIncludesAsync()
@@ -270,19 +270,19 @@ internal sealed class DapperQueryable<TEntity> : IDapperQueryable<TEntity> where
             parameters: parameters,
             splitOn: plan.SplitOn,
             rootMapping: _mapping,
-            includeTree: _includeTree);
+            includeTree: _includeTree).ConfigureAwait(false);
     }
 
     private async Task<List<TEntity>> ExecuteSplitQueryWithIncludesAsync()
     {
-        var results = await ExecuteSimpleQueryAsync();
+        var results = await ExecuteSimpleQueryAsync().ConfigureAwait(false);
         var list = results.ToList();
 
         if (list.Count == 0)
             return list;
 
         var loader = new SplitIncludeLoader(_context, _generator.Dialect, _identityResolution);
-        await loader.LoadAsync(_mapping, list, _includeTree);
+        await loader.LoadAsync(_mapping, list, _includeTree).ConfigureAwait(false);
 
         return list;
     }
