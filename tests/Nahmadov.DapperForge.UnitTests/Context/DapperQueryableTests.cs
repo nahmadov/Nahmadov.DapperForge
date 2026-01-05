@@ -233,6 +233,35 @@ namespace Nahmadov.DapperForge.UnitTests.Context;
     }
 
     [Fact]
+    public void BuildSql_WithDistinct_AddsKeyword()
+    {
+        var queryable = CreateQueryable().Distinct().Where(c => c.IsActive);
+
+        var sql = GetBuildSqlResult(queryable);
+
+        Assert.StartsWith("SELECT DISTINCT", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("WHERE", sql, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildSql_WithOrderByAndThenBy_PreservesOrderSequence()
+    {
+        var queryable = CreateQueryable()
+            .Where(c => c.IsActive)
+            .OrderBy(c => (object)c.Name)
+            .ThenBy(c => (object)c.Id);
+
+        var sql = GetBuildSqlResult(queryable);
+
+        Assert.Contains("ORDER BY", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("a.[Name]", sql);
+        Assert.Contains("a.[Id]", sql);
+        var orderSegment = sql.Split("ORDER BY", StringSplitOptions.RemoveEmptyEntries)[1];
+        Assert.True(orderSegment.IndexOf("a.[Name]", StringComparison.Ordinal) <
+                    orderSegment.IndexOf("a.[Id]", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void BuildSql_WithWhereAndSkipTake_IncludesPaginationClause()
     {
         // Arrange

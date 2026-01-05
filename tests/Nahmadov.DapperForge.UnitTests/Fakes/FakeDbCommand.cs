@@ -1,12 +1,13 @@
-using System.Data;
+﻿using System.Data;
 using System.Data.Common;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Nahmadov.DapperForge.UnitTests.Fakes;
 #nullable disable
 public class FakeDbCommand(DbConnection conn) : DbCommand
 {
-    private readonly DbConnection _conn = conn;
-
+    private readonly FakeDbConnection _fakeConn = (FakeDbConnection)conn;
     public override string CommandText { get; set; } = string.Empty;
 
     public override int CommandTimeout { get; set; } = 30;
@@ -14,8 +15,8 @@ public class FakeDbCommand(DbConnection conn) : DbCommand
 
     protected override DbConnection DbConnection
     {
-        get => _conn;
-        set { /* ignore */ }
+        get => _fakeConn;
+        set { }
     }
 
     protected override DbParameterCollection DbParameterCollection { get; } = new FakeDbParameterCollection();
@@ -29,11 +30,21 @@ public class FakeDbCommand(DbConnection conn) : DbCommand
     protected override DbParameter CreateDbParameter() => new FakeDbParameter();
 
     protected override DbDataReader ExecuteDbDataReader(CommandBehavior behavior)
-        => throw new NotSupportedException("FakeDbCommand does not support ExecuteReader");
+    {
+        var data = _fakeConn.DequeueQuery();
+        return new FakeDbDataReader(data);
+    }
 
-    public override int ExecuteNonQuery() => 0;
+    protected override Task<DbDataReader> ExecuteDbDataReaderAsync(CommandBehavior behavior, CancellationToken cancellationToken)
+        => Task.FromResult(ExecuteDbDataReader(behavior));
 
-    public override object ExecuteScalar() => null;
+    public override int ExecuteNonQuery() => _fakeConn.DequeueNonQuery();
+
+    public override Task<int> ExecuteNonQueryAsync(CancellationToken cancellationToken) => Task.FromResult(ExecuteNonQuery());
+
+    public override object ExecuteScalar() => _fakeConn.DequeueScalar();
+
+    public override Task<object> ExecuteScalarAsync(CancellationToken cancellationToken) => Task.FromResult(ExecuteScalar());
 
     public override void Prepare() { }
 }

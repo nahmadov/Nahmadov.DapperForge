@@ -155,9 +155,7 @@ public sealed class DapperSet<TEntity> where TEntity : class
     /// </remarks>
     public async Task<TEntity> FirstAsync(Expression<Func<TEntity, bool>> predicate, bool ignoreCase = false)
     {
-        var result = await FirstOrDefaultAsync(predicate, ignoreCase);
-        if (result is null)
-            throw new InvalidOperationException("Sequence contains no elements.");
+        var result = await FirstOrDefaultAsync(predicate, ignoreCase) ?? throw new InvalidOperationException("Sequence contains no elements.");
         return result;
     }
 
