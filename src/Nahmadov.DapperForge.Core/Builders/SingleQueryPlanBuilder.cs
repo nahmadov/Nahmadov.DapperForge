@@ -34,12 +34,32 @@ internal sealed class SingleQueryPlanBuilder(ISqlDialect dialect, Func<Type, Ent
 
         var sql = BuildFinalSql(rootMapping, rootAlias, selectParts, joinParts);
 
+        // Count all types recursively (root + all includes at all levels)
+        var totalTypeCount = 1 + CountNodesRecursive(tree.Roots);
+
         return new SingleQueryPlan
         {
             Sql = sql,
             SplitOn = string.Join(", ", splitOnColumns),
-            MapTypesCount = 1 + tree.Roots.Count
+            MapTypesCount = totalTypeCount
         };
+    }
+
+    /// <summary>
+    /// Recursively counts total number of nodes in the Include tree.
+    /// Used to determine the correct type count for Dapper multi-mapping.
+    /// </summary>
+    private static int CountNodesRecursive(List<IncludeNode> nodes)
+    {
+        var count = nodes.Count;
+        foreach (var node in nodes)
+        {
+            if (node.HasChildren)
+            {
+                count += CountNodesRecursive(node.Children);
+            }
+        }
+        return count;
     }
 
     private void BuildNodeJoin(

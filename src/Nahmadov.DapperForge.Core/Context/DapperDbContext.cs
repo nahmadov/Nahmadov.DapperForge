@@ -22,6 +22,7 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
 {
     private readonly DapperDbContextOptions _options;
     private IDbConnection? _connection;
+    private readonly object _connectionLock = new();  // Thread-safety for connection management
     private bool _disposed;
     private readonly ConcurrentDictionary<Type, object> _sets = new();
     private readonly Dictionary<Type, EntityMapping> _model = [];
@@ -52,60 +53,64 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
 
     /// <summary>
     /// Gets an open database connection, creating one if necessary.
+    /// Thread-safe: Multiple threads can safely access this property concurrently.
     /// </summary>
     /// <exception cref="DapperConnectionException">Thrown when connection cannot be established.</exception>
     protected IDbConnection Connection
     {
         get
         {
-            if (_connection != null)
+            lock (_connectionLock)
             {
-                if (_connection.State == ConnectionState.Open)
+                if (_connection != null)
+                {
+                    if (_connection.State == ConnectionState.Open)
+                        return _connection;
+
+                    if (_connection.State == ConnectionState.Broken)
+                    {
+                        _connection.Dispose();
+                        _connection = null;
+                    }
+                }
+
+                if (_options.ConnectionFactory is null)
+                {
+                    throw new DapperConfigurationException(
+                        "ConnectionFactory is not configured. Provide a connection factory in the options.");
+                }
+
+                try
+                {
+                    _connection ??= _options.ConnectionFactory();
+
+                    if (_connection is null)
+                    {
+                        const string msg = "ConnectionFactory returned null";
+                        LogError(new InvalidOperationException(msg), null, msg);
+                        throw new DapperConnectionException(
+                            "ConnectionFactory returned null. Ensure the factory creates a valid connection.");
+                    }
+
+                    if (_connection.State != ConnectionState.Open)
+                    {
+                        LogInformation($"Opening database connection to {_connection.Database ?? "database"}");
+                        _connection.Open();
+                        LogInformation("Database connection opened successfully");
+                    }
+
                     return _connection;
-
-                if (_connection.State == ConnectionState.Broken)
-                {
-                    _connection.Dispose();
-                    _connection = null;
                 }
-            }
-
-            if (_options.ConnectionFactory is null)
-            {
-                throw new DapperConfigurationException(
-                    "ConnectionFactory is not configured. Provide a connection factory in the options.");
-            }
-
-            try
-            {
-                _connection ??= _options.ConnectionFactory();
-
-                if (_connection is null)
+                catch (DapperForgeException)
                 {
-                    const string msg = "ConnectionFactory returned null";
-                    LogError(new InvalidOperationException(msg), null, msg);
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    LogError(ex, null, "Failed to establish database connection");
                     throw new DapperConnectionException(
-                        "ConnectionFactory returned null. Ensure the factory creates a valid connection.");
+                        $"Failed to establish database connection: {ex.Message}", ex);
                 }
-
-                if (_connection.State != ConnectionState.Open)
-                {
-                    LogInformation($"Opening database connection to {_connection.Database ?? "database"}");
-                    _connection.Open();
-                    LogInformation("Database connection opened successfully");
-                }
-
-                return _connection;
-            }
-            catch (DapperForgeException)
-            {
-                throw;
-            }
-            catch (Exception ex)
-            {
-                LogError(ex, null, "Failed to establish database connection");
-                throw new DapperConnectionException(
-                    $"Failed to establish database connection: {ex.Message}", ex);
             }
         }
     }
