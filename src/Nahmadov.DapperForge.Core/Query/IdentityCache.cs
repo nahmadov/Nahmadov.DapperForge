@@ -7,9 +7,50 @@ namespace Nahmadov.DapperForge.Core.Query;
 
 /// <summary>
 /// Manages identity resolution for Include operations.
-/// Ensures the same entity key returns the same instance.
-/// Uses LRU eviction to prevent unbounded memory growth.
+/// Ensures the same entity key returns the same instance (object identity preservation).
+/// Uses LRU (Least Recently Used) eviction to prevent unbounded memory growth.
 /// </summary>
+/// <remarks>
+/// <para><b>Purpose:</b></para>
+/// <para>
+/// When executing Include queries, the same entity may appear multiple times in the result set
+/// (e.g., same Customer for multiple Orders). The identity cache ensures that all references
+/// to the same entity point to the same object instance, preventing duplicate objects in memory.
+/// </para>
+/// <para><b>Performance Characteristics:</b></para>
+/// <list type="bullet">
+/// <item>
+/// <b>Cache Size:</b> Default maximum is 10,000 entities per query. Configurable via constructor parameter.
+/// </item>
+/// <item>
+/// <b>LRU Eviction:</b> When cache is full, the least recently accessed entity is evicted.
+/// Uses LinkedList for O(1) LRU updates and Dictionary for O(1) lookups.
+/// </item>
+/// <item>
+/// <b>Lookup Performance:</b> O(1) average case for both TryGet and GetOrAdd operations.
+/// </item>
+/// <item>
+/// <b>Memory Usage:</b> Bounded by maxSize. Each cached entity stores the instance reference and a LinkedListNode.
+/// Approximate memory per entry: instance reference (8 bytes) + node (24 bytes) + dictionary overhead (~32 bytes).
+/// </item>
+/// <item>
+/// <b>Thread Safety:</b> NOT thread-safe. Intended for single query execution scope.
+/// Each query gets its own IdentityCache instance.
+/// </item>
+/// </list>
+/// <para><b>Example:</b></para>
+/// <code>
+/// // Without identity cache: 3 separate Customer instances (wasteful)
+/// var orders = [
+///     { Id = 1, CustomerId = 100, Customer = new Customer { Id = 100 } },
+///     { Id = 2, CustomerId = 100, Customer = new Customer { Id = 100 } },
+///     { Id = 3, CustomerId = 100, Customer = new Customer { Id = 100 } }
+/// ];
+///
+/// // With identity cache: 3 orders share the same Customer instance
+/// orders[0].Customer == orders[1].Customer == orders[2].Customer // true (reference equality)
+/// </code>
+/// </remarks>
 internal sealed class IdentityCache(Func<Type, EntityMapping> resolveMapping, int maxSize = 10_000)
 {
     private readonly Dictionary<(Type type, object key), CacheEntry> _cache = [];
@@ -44,7 +85,18 @@ internal sealed class IdentityCache(Func<Type, EntityMapping> resolveMapping, in
 
     /// <summary>
     /// Gets or adds an instance to the cache with LRU eviction.
+    /// If instance exists, updates its access time and returns cached instance.
+    /// If cache is full, evicts the least recently used entry before adding new instance.
     /// </summary>
+    /// <param name="type">Entity type (used as part of cache key).</param>
+    /// <param name="key">Entity key value (primary key).</param>
+    /// <param name="instance">New instance to add if not cached.</param>
+    /// <returns>Cached instance if exists, otherwise the provided instance (now cached).</returns>
+    /// <remarks>
+    /// <b>Performance:</b> O(1) average case.
+    /// Cache hit: Updates LRU list (2 linked list operations) and returns cached instance.
+    /// Cache miss: Adds to dictionary and LRU list. If full, removes LRU entry first (3-4 operations total).
+    /// </remarks>
     public object GetOrAdd(Type type, object key, object instance)
     {
         var cacheKey = (type, key);

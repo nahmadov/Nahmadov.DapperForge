@@ -11,7 +11,37 @@ namespace Nahmadov.DapperForge.Core.Builders;
 
 /// <summary>
 /// Translates LINQ expression trees into SQL predicates and parameter objects.
+/// Supports common comparison operators, string methods, logical operators, and collection Contains (IN clause).
 /// </summary>
+/// <typeparam name="TEntity">
+/// The entity type being queried. Must be a reference type (class constraint) to ensure
+/// member expressions can be properly resolved and to support null comparisons.
+/// </typeparam>
+/// <remarks>
+/// <para><b>Performance Optimizations:</b></para>
+/// <list type="bullet">
+/// <item>
+/// <b>Expression Compilation Caching:</b> Compiled expressions are cached in a static ConcurrentDictionary
+/// (max 1000 entries). Cache key is based on expression's ToString() representation.
+/// Subsequent calls with the same expression structure reuse cached compiled delegates, avoiding recompilation overhead.
+/// </item>
+/// <item>
+/// <b>SQL Parameterization:</b> All values are parameterized to prevent SQL injection and enable database query plan caching.
+/// </item>
+/// <item>
+/// <b>Cache Eviction:</b> When cache reaches 1000 entries, entire cache is cleared (simple eviction strategy).
+/// </item>
+/// </list>
+/// <para><b>Supported Expressions:</b></para>
+/// <list type="bullet">
+/// <item>Comparisons: ==, !=, &gt;, &gt;=, &lt;, &lt;=</item>
+/// <item>Logical: &amp;&amp; (AND), || (OR), ! (NOT)</item>
+/// <item>String methods: Contains, StartsWith, EndsWith (with optional case-insensitive mode)</item>
+/// <item>Null checks: prop == null, prop != null</item>
+/// <item>Boolean properties: prop, !prop, prop == true/false</item>
+/// <item>Collection Contains: list.Contains(prop) -&gt; IN clause</item>
+/// </list>
+/// </remarks>
 public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
     where TEntity : class
 {
@@ -44,11 +74,31 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
     }
 
     /// <summary>
-    /// Translates a boolean predicate expression into SQL and parameters.
+    /// Translates a boolean predicate expression into SQL WHERE clause and parameters.
     /// </summary>
-    /// <param name="predicate">Expression to translate.</param>
-    /// <param name="ignoreCase">Optional override for case-insensitive comparisons.</param>
-    /// <returns>Tuple containing SQL text and parameter object.</returns>
+    /// <param name="predicate">
+    /// Expression to translate into SQL. Must be a boolean predicate (returns bool).
+    /// </param>
+    /// <param name="ignoreCase">
+    /// Optional override for case-insensitive comparisons. When null, defaults based on dialect:
+    /// Oracle defaults to true (case-sensitive by default), SQL Server defaults to false (collation-dependent).
+    /// When true, wraps string comparisons with LOWER() on both sides.
+    /// </param>
+    /// <returns>
+    /// Tuple containing:
+    /// <list type="bullet">
+    /// <item>Sql: WHERE clause SQL (without "WHERE" keyword)</item>
+    /// <item>Parameters: Dictionary of parameter names to values</item>
+    /// </list>
+    /// </returns>
+    /// <exception cref="ArgumentNullException">Thrown when predicate is null.</exception>
+    /// <exception cref="NotSupportedException">
+    /// Thrown when expression contains unsupported operations (e.g., method calls other than supported string methods).
+    /// </exception>
+    /// <remarks>
+    /// <b>Performance:</b> Expression compilation is cached. First call compiles and caches, subsequent calls reuse cached delegate.
+    /// All values are parameterized (e.g., @p0, @p1 for SQL Server; :p0, :p1 for Oracle).
+    /// </remarks>
     public (string Sql, object Parameters) Translate(Expression<Func<TEntity, bool>> predicate, bool? ignoreCase = null)
     {
         ArgumentNullException.ThrowIfNull(predicate);
