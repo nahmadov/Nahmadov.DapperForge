@@ -43,6 +43,42 @@ public interface IDapperQueryable<TEntity> where TEntity : class
     IDapperQueryable<TEntity> OrderByDescending(Expression<Func<TEntity, object?>> keySelector);
 
     /// <summary>
+    /// Applies an additional ascending sort order to the query.
+    /// Must be called after OrderBy or OrderByDescending.
+    /// </summary>
+    /// <param name="keySelector">Property to sort by.</param>
+    /// <returns>Queryable object for chaining.</returns>
+    /// <remarks>
+    /// <b>Usage:</b> Chain multiple ThenBy calls for multi-column sorting.
+    /// Example: query.OrderBy(x => x.LastName).ThenBy(x => x.FirstName).ThenBy(x => x.Age)
+    /// </remarks>
+    IDapperQueryable<TEntity> ThenBy(Expression<Func<TEntity, object?>> keySelector);
+
+    /// <summary>
+    /// Applies an additional descending sort order to the query.
+    /// Must be called after OrderBy or OrderByDescending.
+    /// </summary>
+    /// <param name="keySelector">Property to sort by.</param>
+    /// <returns>Queryable object for chaining.</returns>
+    /// <remarks>
+    /// <b>Usage:</b> Chain multiple ThenBy/ThenByDescending calls for multi-column sorting.
+    /// Example: query.OrderBy(x => x.Department).ThenByDescending(x => x.Salary).ThenBy(x => x.Name)
+    /// </remarks>
+    IDapperQueryable<TEntity> ThenByDescending(Expression<Func<TEntity, object?>> keySelector);
+
+    /// <summary>
+    /// Ensures only distinct (unique) rows are returned.
+    /// Removes duplicate results based on all selected columns.
+    /// </summary>
+    /// <returns>Queryable object for chaining.</returns>
+    /// <remarks>
+    /// <b>Performance:</b> Adds DISTINCT keyword to SELECT clause.
+    /// Database performs deduplication, which may require sorting/hashing.
+    /// For large result sets, consider filtering with WHERE instead if possible.
+    /// </remarks>
+    IDapperQueryable<TEntity> Distinct();
+
+    /// <summary>
     /// Skips the specified number of rows.
     /// </summary>
     /// <param name="count">Number of rows to skip.</param>

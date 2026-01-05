@@ -19,6 +19,14 @@ namespace Nahmadov.DapperForge.Core.Context;
     public IDapperQueryable<TEntity> OrderByDescending(Expression<Func<TEntity, object?>> keySelector)
         => _inner.OrderByDescending(keySelector);
 
+    public IDapperQueryable<TEntity> ThenBy(Expression<Func<TEntity, object?>> keySelector)
+        => _inner.ThenBy(keySelector);
+
+    public IDapperQueryable<TEntity> ThenByDescending(Expression<Func<TEntity, object?>> keySelector)
+        => _inner.ThenByDescending(keySelector);
+
+    public IDapperQueryable<TEntity> Distinct() => _inner.Distinct();
+
     public IDapperQueryable<TEntity> Skip(int count) => _inner.Skip(count);
     public IDapperQueryable<TEntity> Take(int count) => _inner.Take(count);
 

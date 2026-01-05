@@ -19,11 +19,11 @@ internal sealed class DapperQueryable<TEntity> : IDapperQueryable<TEntity> where
     private readonly EntityMapping _mapping;
 
     private Expression<Func<TEntity, bool>>? _predicate;
-    private Expression<Func<TEntity, object?>>? _orderBy;
-    private bool _isDescending;
+    private readonly List<(Expression<Func<TEntity, object?>> keySelector, bool isDescending)> _orderByList = [];
     private int _skip;
     private int _take = int.MaxValue;
     private bool _ignoreCase;
+    private bool _distinct;
 
     private readonly IncludeTree _includeTree = new();
     private IncludeNode? _lastIncludeNode;
@@ -50,16 +50,40 @@ internal sealed class DapperQueryable<TEntity> : IDapperQueryable<TEntity> where
     public IDapperQueryable<TEntity> OrderBy(Expression<Func<TEntity, object?>> keySelector)
     {
         ArgumentNullException.ThrowIfNull(keySelector);
-        _orderBy = keySelector;
-        _isDescending = false;
+        _orderByList.Clear();
+        _orderByList.Add((keySelector, false));
         return this;
     }
 
     public IDapperQueryable<TEntity> OrderByDescending(Expression<Func<TEntity, object?>> keySelector)
     {
         ArgumentNullException.ThrowIfNull(keySelector);
-        _orderBy = keySelector;
-        _isDescending = true;
+        _orderByList.Clear();
+        _orderByList.Add((keySelector, true));
+        return this;
+    }
+
+    public IDapperQueryable<TEntity> ThenBy(Expression<Func<TEntity, object?>> keySelector)
+    {
+        ArgumentNullException.ThrowIfNull(keySelector);
+        if (_orderByList.Count == 0)
+            throw new InvalidOperationException("ThenBy must be called after OrderBy or OrderByDescending.");
+        _orderByList.Add((keySelector, false));
+        return this;
+    }
+
+    public IDapperQueryable<TEntity> ThenByDescending(Expression<Func<TEntity, object?>> keySelector)
+    {
+        ArgumentNullException.ThrowIfNull(keySelector);
+        if (_orderByList.Count == 0)
+            throw new InvalidOperationException("ThenByDescending must be called after OrderBy or OrderByDescending.");
+        _orderByList.Add((keySelector, true));
+        return this;
+    }
+
+    public IDapperQueryable<TEntity> Distinct()
+    {
+        _distinct = true;
         return this;
     }
 
@@ -271,6 +295,12 @@ internal sealed class DapperQueryable<TEntity> : IDapperQueryable<TEntity> where
     {
         var sql = _generator.SelectAllSql;
 
+        // Add DISTINCT keyword if requested
+        if (_distinct && sql.StartsWith("SELECT ", StringComparison.OrdinalIgnoreCase))
+        {
+            sql = string.Concat("SELECT DISTINCT ", sql.AsSpan(7));
+        }
+
         sql = AppendWhere(sql);
         sql = AppendOrderBy(sql);
         sql = AppendPaging(sql);
@@ -310,13 +340,24 @@ internal sealed class DapperQueryable<TEntity> : IDapperQueryable<TEntity> where
 
     private string AppendOrderBy(string sql)
     {
-        if (_orderBy is not null)
+        if (_orderByList.Count > 0)
         {
             var visitor = new OrderingVisitor<TEntity>(_mapping, _generator.Dialect);
-            var orderClause = visitor.Translate(_orderBy, _isDescending);
+            var orderClauses = new List<string>();
 
-            if (!string.IsNullOrEmpty(orderClause))
-                return $"{sql} ORDER BY {orderClause}";
+            foreach (var (keySelector, isDescending) in _orderByList)
+            {
+                var orderClause = visitor.Translate(keySelector, isDescending);
+                if (!string.IsNullOrEmpty(orderClause))
+                {
+                    orderClauses.Add(orderClause);
+                }
+            }
+
+            if (orderClauses.Count > 0)
+            {
+                return $"{sql} ORDER BY {string.Join(", ", orderClauses)}";
+            }
         }
         else if (NeedsPaging && _mapping.KeyProperties.Count > 0)
         {
