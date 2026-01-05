@@ -122,8 +122,15 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
     public Task<IEnumerable<T>> QueryAsync<T>(string sql, object? param = null, IDbTransaction? transaction = null)
     {
         LogSql(sql);
-        var connection = transaction?.Connection ?? Connection;
-        return connection.QueryAsync<T>(sql, param, transaction);
+        return ExecuteWithRetryAsync(async () =>
+        {
+            if (_options.EnableConnectionHealthCheck && transaction is null)
+                await EnsureConnectionHealthyAsync();
+
+            var connection = transaction?.Connection ?? Connection;
+            var timeout = _options.CommandTimeoutSeconds;
+            return await connection.QueryAsync<T>(sql, param, transaction, commandTimeout: timeout);
+        });
     }
 
     /// <summary>
@@ -136,16 +143,30 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
     public Task<T?> QueryFirstOrDefaultAsync<T>(string sql, object? param = null, IDbTransaction? transaction = null)
     {
         LogSql(sql);
-        var connection = transaction?.Connection ?? Connection;
-        return connection.QueryFirstOrDefaultAsync<T>(sql, param, transaction);
+        return ExecuteWithRetryAsync(async () =>
+        {
+            if (_options.EnableConnectionHealthCheck && transaction is null)
+                await EnsureConnectionHealthyAsync();
+
+            var connection = transaction?.Connection ?? Connection;
+            var timeout = _options.CommandTimeoutSeconds;
+            return await connection.QueryFirstOrDefaultAsync<T>(sql, param, transaction, commandTimeout: timeout);
+        });
     }
 
     public Task<List<TEntity?>> QueryWithTypesAsync<TEntity>(string sql, Type[] types, object parameters, string splitOn, Func<object?[], TEntity?> map, IDbTransaction? transaction = null)
     {
         LogSql(sql);
-        var connection = transaction?.Connection ?? Connection;
-        return connection.QueryAsync(sql, types, objs => map(objs), param: parameters, transaction: transaction, splitOn: splitOn)
-            .ContinueWith(t => t.Result.ToList());
+        return ExecuteWithRetryAsync(async () =>
+        {
+            if (_options.EnableConnectionHealthCheck && transaction is null)
+                await EnsureConnectionHealthyAsync();
+
+            var connection = transaction?.Connection ?? Connection;
+            var timeout = _options.CommandTimeoutSeconds;
+            var results = await connection.QueryAsync(sql, types, objs => map(objs), param: parameters, transaction: transaction, splitOn: splitOn, commandTimeout: timeout);
+            return results.ToList();
+        });
     }
 
     /// <summary>
@@ -157,8 +178,15 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
     public Task<int> ExecuteAsync(string sql, object? param = null, IDbTransaction? transaction = null)
     {
         LogSql(sql);
-        var connection = transaction?.Connection ?? Connection;
-        return connection.ExecuteAsync(sql, param, transaction);
+        return ExecuteWithRetryAsync(async () =>
+        {
+            if (_options.EnableConnectionHealthCheck && transaction is null)
+                await EnsureConnectionHealthyAsync();
+
+            var connection = transaction?.Connection ?? Connection;
+            var timeout = _options.CommandTimeoutSeconds;
+            return await connection.ExecuteAsync(sql, param, transaction, commandTimeout: timeout);
+        });
     }
 
     /// <summary>
@@ -168,6 +196,119 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
     {
         var transaction = Connection.BeginTransaction();
         return Task.FromResult(transaction);
+    }
+
+    /// <summary>
+    /// Performs a health check on the database connection.
+    /// </summary>
+    /// <returns>True if connection is healthy, otherwise throws exception.</returns>
+    /// <exception cref="DapperConnectionException">Thrown when health check fails.</exception>
+    public async Task<bool> HealthCheckAsync()
+    {
+        try
+        {
+            var connection = Connection;
+
+            if (connection.State != ConnectionState.Open)
+            {
+                LogInformation("Health check: Connection is not open");
+                return false;
+            }
+
+            // Execute a simple query to verify connection is responsive
+            var sql = _options.Dialect!.Name.ToLowerInvariant() switch
+            {
+                "oracle" => "SELECT 1 FROM DUAL",
+                _ => "SELECT 1"
+            };
+
+            await connection.QueryFirstOrDefaultAsync<int>(sql, commandTimeout: 5);
+            LogInformation("Health check: Connection is healthy");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            LogError(ex, null, "Health check failed");
+            throw new DapperConnectionException($"Connection health check failed: {ex.Message}", ex);
+        }
+    }
+
+    #endregion
+
+    #region Retry Logic
+
+    /// <summary>
+    /// Executes a database operation with retry logic for transient failures.
+    /// </summary>
+    private async Task<T> ExecuteWithRetryAsync<T>(Func<Task<T>> operation)
+    {
+        var maxRetries = _options.MaxRetryCount;
+        var baseDelay = _options.RetryDelayMilliseconds;
+
+        for (var attempt = 0; attempt <= maxRetries; attempt++)
+        {
+            try
+            {
+                return await operation();
+            }
+            catch (Exception ex) when (IsTransientError(ex) && attempt < maxRetries)
+            {
+                var delay = baseDelay * (int)Math.Pow(2, attempt);
+                LogInformation($"Transient error detected. Retrying in {delay}ms (attempt {attempt + 1}/{maxRetries})");
+
+                await Task.Delay(delay);
+            }
+        }
+
+        // This should never be reached, but needed for compiler
+        throw new InvalidOperationException("Retry logic failed unexpectedly");
+    }
+
+    /// <summary>
+    /// Determines if an exception represents a transient database error that can be retried.
+    /// </summary>
+    private static bool IsTransientError(Exception ex)
+    {
+        // Check common transient error patterns
+        var message = ex.Message.ToLowerInvariant();
+
+        return ex is TimeoutException
+            || message.Contains("timeout")
+            || message.Contains("connection")
+            || message.Contains("network")
+            || message.Contains("deadlock")
+            || message.Contains("transport-level error")
+            || ex.InnerException is TimeoutException;
+    }
+
+    /// <summary>
+    /// Ensures the connection is healthy before executing a command.
+    /// </summary>
+    private Task EnsureConnectionHealthyAsync()
+    {
+        try
+        {
+            var connection = Connection;
+
+            if (connection.State == ConnectionState.Broken)
+            {
+                LogInformation("Connection is broken, attempting to reconnect");
+                connection.Close();
+                connection.Open();
+            }
+            else if (connection.State != ConnectionState.Open)
+            {
+                LogInformation("Connection is not open, opening connection");
+                connection.Open();
+            }
+
+            return Task.CompletedTask;
+        }
+        catch (Exception ex)
+        {
+            LogError(ex, null, "Failed to ensure connection health");
+            throw new DapperConnectionException($"Failed to ensure connection health: {ex.Message}", ex);
+        }
     }
 
     #endregion
