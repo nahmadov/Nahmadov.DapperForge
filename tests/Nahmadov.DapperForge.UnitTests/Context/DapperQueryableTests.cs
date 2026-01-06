@@ -4,6 +4,7 @@ using Xunit;
 
 using Nahmadov.DapperForge.Core.Builders;
 using Nahmadov.DapperForge.Core.Context;
+using Nahmadov.DapperForge.Core.Context.Execution.Query;
 using Nahmadov.DapperForge.Core.Interfaces;
 using Nahmadov.DapperForge.Core.Mapping;
 using Nahmadov.DapperForge.Oracle;

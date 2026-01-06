@@ -2,14 +2,13 @@ using System.Collections.Concurrent;
 using System.Data;
 using System.Reflection;
 
-using Dapper;
-
 using Microsoft.Extensions.Logging;
 
 using Nahmadov.DapperForge.Core.Builders;
 using Nahmadov.DapperForge.Core.Common;
+using Nahmadov.DapperForge.Core.Context.Connection;
+using Nahmadov.DapperForge.Core.Context.Utilities;
 using Nahmadov.DapperForge.Core.Exceptions;
-using Nahmadov.DapperForge.Core.Extensions;
 using Nahmadov.DapperForge.Core.Interfaces;
 using Nahmadov.DapperForge.Core.Mapping;
 using Nahmadov.DapperForge.Core.Query;
@@ -22,14 +21,11 @@ namespace Nahmadov.DapperForge.Core.Context;
 public abstract class DapperDbContext : IDapperDbContext, IDisposable
 {
     private readonly DapperDbContextOptions _options;
-    private IDbConnection? _connection;
-    private readonly object _connectionLock = new();  // Thread-safety for connection management
+    private readonly ContextConnectionManager _connectionManager;
+    private readonly ContextModelManager _modelManager;
+    private readonly SqlGeneratorProvider _sqlGeneratorProvider;
     private bool _disposed;
     private readonly ConcurrentDictionary<Type, object> _sets = new();
-    private readonly Dictionary<Type, EntityMapping> _model = [];
-    private readonly HashSet<Type> _registeredEntityTypes = new();
-    private readonly ConcurrentDictionary<Type, object> _sqlGeneratorCache = new();
-    private bool _modelBuilt;
     private IQueryExecutor? _queryExecutor;
 
     /// <summary>
@@ -51,6 +47,10 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
             throw new DapperConfigurationException(
                 "ConnectionFactory is not configured. Provide a connection factory in the options.");
         }
+
+        _connectionManager = new ContextConnectionManager(_options, LogInformation, LogError);
+        _modelManager = new ContextModelManager(_options, GetType(), OnModelCreating);
+        _sqlGeneratorProvider = new SqlGeneratorProvider(_options.Dialect!, _modelManager);
     }
 
     /// <summary>
@@ -81,61 +81,7 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
     /// <exception cref="DapperConnectionException">Thrown when connection cannot be established.</exception>
     protected IDbConnection Connection
     {
-        get
-        {
-            lock (_connectionLock)
-            {
-                if (_connection != null)
-                {
-                    if (_connection.State == ConnectionState.Open)
-                        return _connection;
-
-                    if (_connection.State == ConnectionState.Broken)
-                    {
-                        _connection.Dispose();
-                        _connection = null;
-                    }
-                }
-
-                if (_options.ConnectionFactory is null)
-                {
-                    throw new DapperConfigurationException(
-                        "ConnectionFactory is not configured. Provide a connection factory in the options.");
-                }
-
-                try
-                {
-                    _connection ??= _options.ConnectionFactory();
-
-                    if (_connection is null)
-                    {
-                        const string msg = "ConnectionFactory returned null";
-                        LogError(new InvalidOperationException(msg), null, msg);
-                        throw new DapperConnectionException(
-                            "ConnectionFactory returned null. Ensure the factory creates a valid connection.");
-                    }
-
-                    if (_connection.State != ConnectionState.Open)
-                    {
-                        LogInformation($"Opening database connection to {_connection.Database ?? "database"}");
-                        _connection.Open();
-                        LogInformation("Database connection opened successfully");
-                    }
-
-                    return _connection;
-                }
-                catch (DapperForgeException)
-                {
-                    throw;
-                }
-                catch (Exception ex)
-                {
-                    LogError(ex, null, "Failed to establish database connection");
-                    throw new DapperConnectionException(
-                        $"Failed to establish database connection: {ex.Message}", ex);
-                }
-            }
-        }
+        get => _connectionManager.GetOpenConnection();
     }
 
     #region Low-level Dapper wrappers
@@ -210,34 +156,7 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
     /// <returns>True if connection is healthy, otherwise throws exception.</returns>
     /// <exception cref="DapperConnectionException">Thrown when health check fails.</exception>
     public async Task<bool> HealthCheckAsync()
-    {
-        try
-        {
-            var connection = Connection;
-
-            if (connection.State != ConnectionState.Open)
-            {
-                LogInformation("Health check: Connection is not open");
-                return false;
-            }
-
-            // Execute a simple query to verify connection is responsive
-            var sql = _options.Dialect!.Name.ToLowerInvariant() switch
-            {
-                "oracle" => "SELECT 1 FROM DUAL",
-                _ => "SELECT 1"
-            };
-
-            await connection.QueryFirstOrDefaultAsync<int>(sql, commandTimeout: 5).ConfigureAwait(false);
-            LogInformation("Health check: Connection is healthy");
-            return true;
-        }
-        catch (Exception ex)
-        {
-            LogError(ex, null, "Health check failed");
-            throw new DapperConnectionException($"Connection health check failed: {ex.Message}", ex);
-        }
-    }
+        => await _connectionManager.HealthCheckAsync().ConfigureAwait(false);
 
     #endregion
 
@@ -246,29 +165,7 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
     /// </summary>
     private Task EnsureConnectionHealthyAsync()
     {
-        try
-        {
-            var connection = Connection;
-
-            if (connection.State == ConnectionState.Broken)
-            {
-                LogInformation("Connection is broken, attempting to reconnect");
-                connection.Close();
-                connection.Open();
-            }
-            else if (connection.State != ConnectionState.Open)
-            {
-                LogInformation("Connection is not open, opening connection");
-                connection.Open();
-            }
-
-            return Task.CompletedTask;
-        }
-        catch (Exception ex)
-        {
-            LogError(ex, null, "Failed to ensure connection health");
-            throw new DapperConnectionException($"Failed to ensure connection health: {ex.Message}", ex);
-        }
+        return _connectionManager.EnsureConnectionHealthyAsync();
     }
 
     /// <summary>
@@ -278,14 +175,15 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
     /// <returns>A set for the entity type.</returns>
     public DapperSet<TEntity> Set<TEntity>() where TEntity : class
     {
-        EnsureModelBuilt();
-        return (DapperSet<TEntity>)_sets.GetOrAdd(typeof(TEntity), _ =>
-        {
-            var mapping = GetEntityMapping<TEntity>();
+        _modelManager.EnsureModelBuilt();
+        return (DapperSet<TEntity>)_sets.GetOrAdd(typeof(TEntity), _ => CreateSet<TEntity>());
+    }
 
-            var generator = new SqlGenerator<TEntity>(_options.Dialect!, mapping);
-            return new DapperSet<TEntity>(this, generator, mapping);
-        });
+    private DapperSet<TEntity> CreateSet<TEntity>() where TEntity : class
+    {
+        var mapping = _modelManager.GetEntityMapping<TEntity>();
+        var generator = _sqlGeneratorProvider.GetGenerator<TEntity>();
+        return new DapperSet<TEntity>(this, generator, mapping);
     }
 
     /// <summary>
@@ -295,91 +193,6 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
     protected virtual void OnModelCreating(DapperModelBuilder modelBuilder) { }
 
     /// <summary>
-    /// Ensures the model metadata is built once before accessing entity sets.
-    /// </summary>
-    private void EnsureModelBuilt()
-    {
-        if (_modelBuilt) return;
-
-        var builder = new DapperModelBuilder(_options.Dialect!, _options.Dialect?.DefaultSchema);
-
-        InitializeMappingsFromAttributes(builder);
-        OnModelCreating(builder);
-        ApplyDbSetNameConvention(builder);
-
-        var dbSetEntityTypes = GetType()
-        .GetProperties(BindingFlags.Instance | BindingFlags.Public)
-        .Where(p => p.PropertyType.IsGenericType &&
-                    p.PropertyType.GetGenericTypeDefinition() == typeof(DapperSet<>))
-        .Select(p => p.PropertyType.GetGenericArguments()[0]);
-
-        foreach (var t in dbSetEntityTypes)
-            _registeredEntityTypes.Add(t);
-
-        foreach (var kvp in builder.Build())
-        {
-            _model[kvp.Key] = kvp.Value;
-        }
-
-        foreach (var kv in _model) // Dictionary<Type, EntityMapping>
-        {
-            DapperTypeMapExtensions.SetPrefixInsensitiveMap(kv.Key);
-        }
-
-        _modelBuilt = true;
-    }
-
-    /// <summary>
-    /// Ensures entity types referenced by DbSet<T> are registered with the model builder.
-    /// </summary>
-    /// <param name="builder">Model builder receiving the configuration.</param>
-    private void InitializeMappingsFromAttributes(DapperModelBuilder builder)
-    {
-        var entityTypes = new HashSet<Type>();
-
-        var dbSetTypes = GetType()
-            .GetProperties(BindingFlags.Instance | BindingFlags.Public)
-            .Where(p =>
-                p.PropertyType.IsGenericType &&
-                p.PropertyType.GetGenericTypeDefinition() == typeof(DapperSet<>))
-            .Select(p => p.PropertyType.GetGenericArguments()[0]);
-
-        foreach (var t in dbSetTypes)
-            entityTypes.Add(t);
-
-        foreach (var entityType in entityTypes)
-        {
-            builder.Entity(entityType);
-        }
-    }
-
-    /// <summary>
-    /// Applies a convention that maps entities to table names matching DbSet property names when not explicitly set.
-    /// </summary>
-    /// <param name="builder">Model builder to update.</param>
-    private void ApplyDbSetNameConvention(DapperModelBuilder builder)
-    {
-        var props = GetType()
-            .GetProperties(BindingFlags.Instance | BindingFlags.Public)
-            .Where(p =>
-                p.PropertyType.IsGenericType &&
-                p.PropertyType.GetGenericTypeDefinition() == typeof(DapperSet<>));
-
-        foreach (var prop in props)
-        {
-            var entityType = prop.PropertyType.GetGenericArguments()[0];
-
-            builder.Entity(entityType, b =>
-            {
-                if (string.IsNullOrWhiteSpace(b.TableName))
-                {
-                    b.ToTable(prop.Name, builder.DefaultSchema);
-                }
-            });
-        }
-    }
-
-    /// <summary>
     /// Retrieves the mapping for a given entity type, building the model if necessary.
     /// </summary>
     /// <typeparam name="TEntity">Entity type.</typeparam>
@@ -387,23 +200,7 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
     /// <exception cref="DapperConfigurationException">Thrown when entity is not registered or mapping not found.</exception>
     internal EntityMapping GetEntityMapping<TEntity>() where TEntity : class
     {
-        EnsureModelBuilt();
-        var type = typeof(TEntity);
-
-        if (!_registeredEntityTypes.Contains(type))
-        {
-            throw new DapperConfigurationException(
-                type.Name,
-                $"Entity is not registered in this context. " +
-                $"Declare it as a public DapperSet<{type.Name}> property on '{GetType().Name}'.");
-        }
-
-        if (_model.TryGetValue(type, out var mapping))
-            return mapping;
-
-        throw new DapperConfigurationException(
-            type.Name,
-            "Mapping was not built. Ensure model building includes this entity.");
+        return _modelManager.GetEntityMapping<TEntity>();
     }
 
     /// <summary>
@@ -414,40 +211,12 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
     /// <exception cref="DapperConfigurationException">Thrown when entity is not registered or mapping not found.</exception>
     internal EntityMapping GetEntityMapping(Type entityType)
     {
-        EnsureModelBuilt();
-
-        if (!_registeredEntityTypes.Contains(entityType))
-        {
-            throw new DapperConfigurationException(
-                entityType.Name,
-                $"Entity is not registered in this context. " +
-                $"Declare it as a public DapperSet<{entityType.Name}> property on '{GetType().Name}'.");
-        }
-
-        if (_model.TryGetValue(entityType, out var mapping))
-            return mapping;
-
-        throw new DapperConfigurationException(
-            entityType.Name,
-            "Mapping was not built. Ensure it is registered in the model.");
+        return _modelManager.GetEntityMapping(entityType);
     }
 
     internal object GetSqlGenerator(Type entityType)
     {
-        ArgumentNullException.ThrowIfNull(entityType);
-
-        EnsureModelBuilt();
-
-        return _sqlGeneratorCache.GetOrAdd(entityType, t =>
-        {
-            var mapping = GetEntityMapping(t);
-
-            var genType = typeof(SqlGenerator<>).MakeGenericType(t);
-            return Activator.CreateInstance(genType, _options.Dialect!, mapping)
-                ?? throw new DapperConfigurationException(
-                    t.Name,
-                    "Could not create SqlGenerator. This is likely an internal error.");
-        });
+        return _sqlGeneratorProvider.GetGenerator(entityType);
     }
 
     /// <summary>
@@ -483,8 +252,7 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
 
         if (disposing)
         {
-            _connection?.Dispose();
-            _connection = null;
+            _connectionManager.Dispose();
         }
 
         _disposed = true;

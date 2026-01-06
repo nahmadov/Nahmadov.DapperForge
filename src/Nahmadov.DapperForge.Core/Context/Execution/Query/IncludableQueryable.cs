@@ -1,9 +1,10 @@
 using System.Linq.Expressions;
+
 using Nahmadov.DapperForge.Core.Interfaces;
 
-namespace Nahmadov.DapperForge.Core.Context;
+namespace Nahmadov.DapperForge.Core.Context.Execution.Query;
 
-    internal sealed class IncludableQueryable<TEntity, TProperty> : IIncludableQueryable<TEntity, TProperty>
+internal sealed class IncludableQueryable<TEntity, TProperty> : IIncludableQueryable<TEntity, TProperty>
     where TEntity : class
 {
     private readonly DapperQueryable<TEntity> _inner;
