@@ -24,7 +24,7 @@ internal sealed class EntityMutationExecutor<TEntity>(DapperDbContext context, S
     public async Task<int> InsertAsync(TEntity entity, IDbTransaction? transaction = null)
     {
         ArgumentNullException.ThrowIfNull(entity);
-        EnsureCanMutate();
+        EnsureCanInsert();
         EntityValidator<TEntity>.ValidateForInsert(entity, _mapping);
 
         if (string.IsNullOrWhiteSpace(_generator.InsertSql))
@@ -160,10 +160,146 @@ internal sealed class EntityMutationExecutor<TEntity>(DapperDbContext context, S
         return affected;
     }
 
+    /// <summary>
+    /// Updates an entity using explicit WHERE conditions instead of primary/alternate key.
+    /// Provides control over affected row count and supports mass operations.
+    /// </summary>
+    /// <param name="entity">Entity with updated values.</param>
+    /// <param name="where">WHERE conditions as property-value pairs. All columns must exist in entity mapping.</param>
+    /// <param name="allowMultiple">Set to true to allow multiple rows to be affected. Default is false (expects exactly 1 row).</param>
+    /// <param name="expectedRows">Expected number of affected rows. If specified, throws if actual count differs.</param>
+    /// <param name="transaction">Optional transaction.</param>
+    /// <returns>Number of affected rows.</returns>
+    /// <exception cref="DapperOperationException">If affected row count doesn't match expectations.</exception>
+    /// <exception cref="DapperConfigurationException">If WHERE column not found in entity mapping.</exception>
+    /// <remarks>
+    /// <para><b>Safety:</b></para>
+    /// <list type="bullet">
+    /// <item>All WHERE columns are validated against entity mapping (prevents SQL injection)</item>
+    /// <item>WHERE conditions are parameterized</item>
+    /// <item>Patterns like WHERE 1=1 are explicitly forbidden</item>
+    /// <item>By default, expects exactly 1 row affected (prevents accidental mass updates)</item>
+    /// </list>
+    /// </remarks>
+    public async Task<int> UpdateAsync(TEntity entity, object where, bool allowMultiple = false, int? expectedRows = null, IDbTransaction? transaction = null)
+    {
+        ArgumentNullException.ThrowIfNull(entity);
+        ArgumentNullException.ThrowIfNull(where);
+        EnsureCanMutate();
+        EntityValidator<TEntity>.ValidateForUpdate(entity, _mapping);
+
+        var whereDict = EntityMutationExecutor<TEntity>.ConvertToDictionary(where);
+
+        var (whereClause, whereParams) = WhereConditionBuilder.BuildFromExplicitConditions(
+            whereDict,
+            _mapping,
+            _generator.Dialect,
+            typeof(TEntity).Name);
+
+        WhereConditionBuilder.ValidateSafety(whereClause, typeof(TEntity).Name);
+
+        if (expectedRows.HasValue)
+        {
+            return await UpdateWithPreValidationAsync(
+                entity,
+                whereClause,
+                whereParams,
+                expectedRows.Value,
+                transaction).ConfigureAwait(false);
+        }
+
+        var updateSql = BuildUpdateSqlWithWhere(whereClause);
+        var allParams = EntityMutationExecutor<TEntity>.MergeParameters(entity, whereParams);
+
+        int affected;
+        try
+        {
+            affected = await _context.ExecuteAsync(updateSql, allParams, transaction).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not DapperForgeException)
+        {
+            throw new DapperExecutionException(
+                OperationType.Update,
+                typeof(TEntity).Name,
+                updateSql,
+                ex);
+        }
+
+        // Validate affected row count
+        ValidateAffectedRows(affected, allowMultiple, expectedRows, OperationType.Update);
+
+        return affected;
+    }
+
+    /// <summary>
+    /// Deletes entities using explicit WHERE conditions instead of primary/alternate key.
+    /// Provides control over affected row count and supports mass operations.
+    /// </summary>
+    /// <param name="where">WHERE conditions as property-value pairs. All columns must exist in entity mapping.</param>
+    /// <param name="allowMultiple">Set to true to allow multiple rows to be deleted. Default is false (expects exactly 1 row).</param>
+    /// <param name="expectedRows">Expected number of affected rows. If specified, throws if actual count differs.</param>
+    /// <param name="transaction">Optional transaction.</param>
+    /// <returns>Number of affected rows.</returns>
+    /// <exception cref="DapperOperationException">If affected row count doesn't match expectations.</exception>
+    /// <exception cref="DapperConfigurationException">If WHERE column not found in entity mapping.</exception>
+    /// <remarks>
+    /// <para><b>Safety:</b></para>
+    /// <list type="bullet">
+    /// <item>All WHERE columns are validated against entity mapping (prevents SQL injection)</item>
+    /// <item>WHERE conditions are parameterized</item>
+    /// <item>Patterns like WHERE 1=1 are explicitly forbidden</item>
+    /// <item>By default, expects exactly 1 row affected (prevents accidental mass deletes)</item>
+    /// </list>
+    /// </remarks>
+    public async Task<int> DeleteAsync(object where, bool allowMultiple = false, int? expectedRows = null, IDbTransaction? transaction = null)
+    {
+        ArgumentNullException.ThrowIfNull(where);
+        EnsureCanMutate();
+
+        var whereDict = EntityMutationExecutor<TEntity>.ConvertToDictionary(where);
+
+        var (whereClause, whereParams) = WhereConditionBuilder.BuildFromExplicitConditions(
+            whereDict,
+            _mapping,
+            _generator.Dialect,
+            typeof(TEntity).Name);
+
+        WhereConditionBuilder.ValidateSafety(whereClause, typeof(TEntity).Name);
+
+        if (expectedRows.HasValue)
+        {
+            return await DeleteWithPreValidationAsync(
+                whereClause,
+                whereParams,
+                expectedRows.Value,
+                transaction).ConfigureAwait(false);
+        }
+
+        var deleteSql = BuildDeleteSql(whereClause);
+
+        int affected;
+        try
+        {
+            affected = await _context.ExecuteAsync(deleteSql, whereParams, transaction).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not DapperForgeException)
+        {
+            throw new DapperExecutionException(
+                OperationType.Delete,
+                typeof(TEntity).Name,
+                deleteSql,
+                ex);
+        }
+
+        ValidateAffectedRows(affected, allowMultiple, expectedRows, OperationType.Delete);
+
+        return affected;
+    }
+
     public async Task<TKey> InsertAndGetIdAsync<TKey>(TEntity entity, IDbTransaction? transaction = null)
     {
         ArgumentNullException.ThrowIfNull(entity);
-        EnsureCanMutate();
+        EnsureCanInsert();
         EntityValidator<TEntity>.ValidateForInsert(entity, _mapping);
 
         if (_mapping.KeyProperties.Count != 1)
@@ -262,6 +398,227 @@ internal sealed class EntityMutationExecutor<TEntity>(DapperDbContext context, S
         }
     }
 
+    private static Dictionary<string, object?> ConvertToDictionary(object obj)
+    {
+        var dict = new Dictionary<string, object?>();
+        var properties = obj.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance);
+
+        foreach (var prop in properties)
+        {
+            var value = prop.GetValue(obj);
+            dict[prop.Name] = value;
+        }
+
+        return dict;
+    }
+
+    private string BuildUpdateSqlWithWhere(string whereClause)
+    {
+        if (string.IsNullOrWhiteSpace(_generator.UpdateSql))
+        {
+            throw new DapperConfigurationException(
+                typeof(TEntity).Name,
+                "Update SQL is not configured or no columns are updatable.");
+        }
+
+        var sqlBeforeWhere = _generator.UpdateSql.Substring(0, _generator.UpdateSql.LastIndexOf(" WHERE ", StringComparison.OrdinalIgnoreCase));
+        return $"{sqlBeforeWhere} WHERE {whereClause}";
+    }
+
+    private static object MergeParameters(TEntity entity, Dictionary<string, object?> whereParams)
+    {
+        var parameters = new DynamicParameters(entity);
+
+        foreach (var (key, value) in whereParams)
+        {
+            parameters.Add(key, value);
+        }
+
+        return parameters;
+    }
+
+    private string BuildDeleteSql(string whereClause)
+    {
+        var tableName = string.IsNullOrWhiteSpace(_mapping.Schema)
+            ? _generator.Dialect.QuoteIdentifier(_mapping.TableName)
+            : $"{_generator.Dialect.QuoteIdentifier(_mapping.Schema)}.{_generator.Dialect.QuoteIdentifier(_mapping.TableName)}";
+
+        return $"DELETE FROM {tableName} WHERE {whereClause}";
+    }
+
+    private async Task<int> UpdateWithPreValidationAsync(
+        TEntity entity,
+        string whereClause,
+        Dictionary<string, object?> whereParams,
+        int expectedRows,
+        IDbTransaction? transaction)
+    {
+        IDbTransaction? ownedTransaction = null;
+        var effectiveTransaction = transaction;
+
+        try
+        {
+            if (transaction is null)
+            {
+                ownedTransaction = await _context.BeginTransactionAsync().ConfigureAwait(false);
+                effectiveTransaction = ownedTransaction;
+            }
+
+            var countSql = BuildCountSql(whereClause);
+            long actualCount;
+            try
+            {
+                actualCount = await _context.QueryFirstOrDefaultAsync<long>(countSql, whereParams, effectiveTransaction).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is not DapperForgeException)
+            {
+                throw new DapperExecutionException(OperationType.Update, typeof(TEntity).Name, countSql, ex);
+            }
+
+            // Validate count BEFORE executing update
+            if (actualCount != expectedRows)
+            {
+                throw new DapperOperationException(OperationType.Update, typeof(TEntity).Name, $"Expected {expectedRows} row(s) to be affected but found {actualCount} matching row(s) before update.");
+            }
+
+            // Execute UPDATE
+            var updateSql = BuildUpdateSqlWithWhere(whereClause);
+            var allParams = EntityMutationExecutor<TEntity>.MergeParameters(entity, whereParams);
+
+            int affected;
+            try
+            {
+                affected = await _context.ExecuteAsync(updateSql, allParams, effectiveTransaction).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is not DapperForgeException)
+            {
+                throw new DapperExecutionException(OperationType.Update, typeof(TEntity).Name, updateSql, ex);
+            }
+
+            ownedTransaction?.Commit();
+
+            return affected;
+        }
+        catch
+        {
+            ownedTransaction?.Rollback();
+            throw;
+        }
+        finally
+        {
+            ownedTransaction?.Dispose();
+        }
+    }
+
+    private async Task<int> DeleteWithPreValidationAsync(
+        string whereClause,
+        Dictionary<string, object?> whereParams,
+        int expectedRows,
+        IDbTransaction? transaction)
+    {
+        IDbTransaction? ownedTransaction = null;
+        var effectiveTransaction = transaction;
+
+        try
+        {
+            if (transaction is null)
+            {
+                ownedTransaction = await _context.BeginTransactionAsync().ConfigureAwait(false);
+                effectiveTransaction = ownedTransaction;
+            }
+
+            var countSql = BuildCountSql(whereClause);
+            long actualCount;
+            try
+            {
+                actualCount = await _context.QueryFirstOrDefaultAsync<long>(
+                    countSql,
+                    whereParams,
+                    effectiveTransaction).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is not DapperForgeException)
+            {
+                throw new DapperExecutionException(
+                    OperationType.Delete,
+                    typeof(TEntity).Name,
+                    countSql,
+                    ex);
+            }
+
+            if (actualCount != expectedRows)
+            {
+                throw new DapperOperationException(OperationType.Delete, typeof(TEntity).Name, $"Expected {expectedRows} row(s) to be affected but found {actualCount} matching row(s) before delete.");
+            }
+
+            var deleteSql = BuildDeleteSql(whereClause);
+
+            int affected;
+            try
+            {
+                affected = await _context.ExecuteAsync(deleteSql, whereParams, effectiveTransaction).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is not DapperForgeException)
+            {
+                throw new DapperExecutionException(OperationType.Delete, typeof(TEntity).Name, deleteSql, ex);
+            }
+
+            ownedTransaction?.Commit();
+
+            return affected;
+        }
+        catch
+        {
+            ownedTransaction?.Rollback();
+            throw;
+        }
+        finally
+        {
+            ownedTransaction?.Dispose();
+        }
+    }
+
+    private string BuildCountSql(string whereClause)
+    {
+        var tableName = string.IsNullOrWhiteSpace(_mapping.Schema)
+            ? _generator.Dialect.QuoteIdentifier(_mapping.TableName)
+            : $"{_generator.Dialect.QuoteIdentifier(_mapping.Schema)}.{_generator.Dialect.QuoteIdentifier(_mapping.TableName)}";
+
+        return $"SELECT COUNT(*) FROM {tableName} WHERE {whereClause}";
+    }
+
+    private static void ValidateAffectedRows(int affected, bool allowMultiple, int? expectedRows, OperationType operationType)
+    {
+        if (expectedRows.HasValue)
+        {
+            if (affected != expectedRows.Value)
+            {
+                throw new DapperOperationException(operationType, typeof(TEntity).Name, $"Expected {expectedRows.Value} row(s) to be affected but {affected} row(s) were affected.");
+            }
+            return;
+        }
+
+        if (!allowMultiple && affected != 1)
+        {
+            if (affected == 0)
+            {
+                throw new DapperConcurrencyException(operationType, typeof(TEntity).Name);
+            }
+            else
+            {
+                throw new DapperOperationException(operationType, typeof(TEntity).Name, $"Expected 1 row to be affected but {affected} rows were affected. " + "Set allowMultiple=true to allow multiple rows to be affected.");
+            }
+        }
+    }
+
+    private void EnsureCanInsert()
+    {
+        if (_mapping.IsReadOnly)
+        {
+            throw new InvalidOperationException(
+                $"Entity '{typeof(TEntity).Name}' is marked as ReadOnly and cannot be modified.");
+        }
+    }
+
     private void EnsureCanMutate()
     {
         if (_mapping.IsReadOnly)
@@ -269,11 +626,10 @@ internal sealed class EntityMutationExecutor<TEntity>(DapperDbContext context, S
             throw new InvalidOperationException(
                 $"Entity '{typeof(TEntity).Name}' is marked as ReadOnly and cannot be modified.");
         }
-
-        if (_mapping.KeyProperties.Count == 0)
+        if (!_mapping.HasPrimaryKey && !_mapping.HasAlternateKey)
         {
             throw new InvalidOperationException(
-                $"Entity '{typeof(TEntity).Name}' has no key and cannot be updated/deleted.");
+                $"Entity '{typeof(TEntity).Name}' has no Primary Key or Alternate Key and cannot be updated/deleted.");
         }
     }
 

@@ -284,5 +284,130 @@ public sealed class DapperSet<TEntity> where TEntity : class
     public async Task<TKey> InsertAndGetIdAsync<TKey>(TEntity entity, IDbTransaction? transaction = null)
         => await _mutationExecutor.InsertAndGetIdAsync<TKey>(entity, transaction).ConfigureAwait(false);
 
+    /// <summary>
+    /// Updates an entity using explicit WHERE conditions instead of primary/alternate key.
+    /// Provides control over affected row count and supports mass operations.
+    /// </summary>
+    /// <param name="entity">Entity with updated values.</param>
+    /// <param name="where">
+    /// WHERE conditions as anonymous object with property-value pairs.
+    /// All properties must correspond to mapped entity columns.
+    /// Example: new { Status = "Active", Department = "IT" }
+    /// </param>
+    /// <param name="allowMultiple">
+    /// Set to true to allow multiple rows to be affected.
+    /// Default is false (expects exactly 1 row). Prevents accidental mass updates.
+    /// </param>
+    /// <param name="expectedRows">
+    /// Expected number of affected rows. If specified, throws if actual count differs.
+    /// Takes precedence over allowMultiple when set.
+    /// </param>
+    /// <param name="transaction">Optional transaction for the operation.</param>
+    /// <returns>Number of affected rows.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when entity or where is null.</exception>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown when entity is marked as ReadOnly or has no key configured.
+    /// </exception>
+    /// <exception cref="DapperConfigurationException">
+    /// Thrown when WHERE column is not found in entity mapping or Update SQL is not configured.
+    /// </exception>
+    /// <exception cref="DapperOperationException">
+    /// Thrown when affected row count doesn't match expectations (0 rows, multiple rows when allowMultiple=false, etc.).
+    /// </exception>
+    /// <exception cref="DapperConcurrencyException">
+    /// Thrown when 0 rows are affected and allowMultiple=false (entity not found).
+    /// </exception>
+    /// <exception cref="DapperExecutionException">
+    /// Thrown when SQL execution fails.
+    /// </exception>
+    /// <remarks>
+    /// <para><b>Safety Features:</b></para>
+    /// <list type="bullet">
+    /// <item>All WHERE columns are validated against entity mapping (prevents SQL injection)</item>
+    /// <item>WHERE conditions are fully parameterized</item>
+    /// <item>Patterns like WHERE 1=1 are explicitly forbidden</item>
+    /// <item>By default, expects exactly 1 row affected (prevents accidental mass updates)</item>
+    /// <item>Null values are handled as "IS NULL" instead of "= NULL"</item>
+    /// </list>
+    /// <para><b>Example Usage:</b></para>
+    /// <code>
+    /// await employees.UpdateAsync(
+    ///     new Employee { Salary = 75000 },
+    ///     new { EmployeeNumber = "EMP-12345" });
+    ///
+    /// await employees.UpdateAsync(
+    ///     new Employee { Status = "Inactive" },
+    ///     new { Department = "IT", Location = "Seattle" },
+    ///     allowMultiple: true);
+    ///
+    /// await employees.UpdateAsync(
+    ///     new Employee { BonusPercent = 10 },
+    ///     new { PerformanceRating = "Excellent" },
+    ///     expectedRows: 5);
+    /// </code>
+    /// </remarks>
+    public async Task<int> UpdateAsync(TEntity entity, object where, bool allowMultiple = false, int? expectedRows = null, IDbTransaction? transaction = null)
+        => await _mutationExecutor.UpdateAsync(entity, where, allowMultiple, expectedRows, transaction).ConfigureAwait(false);
+
+    /// <summary>
+    /// Deletes entities using explicit WHERE conditions instead of primary/alternate key.
+    /// Provides control over affected row count and supports mass operations.
+    /// </summary>
+    /// <param name="where">
+    /// WHERE conditions as anonymous object with property-value pairs.
+    /// All properties must correspond to mapped entity columns.
+    /// Example: new { Status = "Deleted", LastModified = someDate }
+    /// </param>
+    /// <param name="allowMultiple">
+    /// Set to true to allow multiple rows to be deleted.
+    /// Default is false (expects exactly 1 row). Prevents accidental mass deletes.
+    /// </param>
+    /// <param name="expectedRows">
+    /// Expected number of affected rows. If specified, throws if actual count differs.
+    /// Takes precedence over allowMultiple when set.
+    /// </param>
+    /// <param name="transaction">Optional transaction for the operation.</param>
+    /// <returns>Number of affected rows.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when where is null.</exception>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown when entity is marked as ReadOnly or has no key configured.
+    /// </exception>
+    /// <exception cref="DapperConfigurationException">
+    /// Thrown when WHERE column is not found in entity mapping.
+    /// </exception>
+    /// <exception cref="DapperOperationException">
+    /// Thrown when affected row count doesn't match expectations (0 rows, multiple rows when allowMultiple=false, etc.).
+    /// </exception>
+    /// <exception cref="DapperConcurrencyException">
+    /// Thrown when 0 rows are affected and allowMultiple=false (no matching entities found).
+    /// </exception>
+    /// <exception cref="DapperExecutionException">
+    /// Thrown when SQL execution fails.
+    /// </exception>
+    /// <remarks>
+    /// <para><b>Safety Features:</b></para>
+    /// <list type="bullet">
+    /// <item>All WHERE columns are validated against entity mapping (prevents SQL injection)</item>
+    /// <item>WHERE conditions are fully parameterized</item>
+    /// <item>Patterns like WHERE 1=1 are explicitly forbidden</item>
+    /// <item>By default, expects exactly 1 row affected (prevents accidental mass deletes)</item>
+    /// <item>Null values are handled as "IS NULL" instead of "= NULL"</item>
+    /// </list>
+    /// <para><b>Example Usage:</b></para>
+    /// <code>
+    /// await employees.DeleteAsync(new { EmployeeNumber = "EMP-12345" });
+    ///
+    /// await employees.DeleteAsync(
+    ///     new { Status = "Inactive", Department = "IT" },
+    ///     allowMultiple: true);
+    ///
+    /// await employees.DeleteAsync(
+    ///     new { IsTemporary = true, EndDate = someDate },
+    ///     expectedRows: 3);
+    /// </code>
+    /// </remarks>
+    public async Task<int> DeleteAsync(object where, bool allowMultiple = false, int? expectedRows = null, IDbTransaction? transaction = null)
+        => await _mutationExecutor.DeleteAsync(where, allowMultiple, expectedRows, transaction).ConfigureAwait(false);
+
     #endregion
 }

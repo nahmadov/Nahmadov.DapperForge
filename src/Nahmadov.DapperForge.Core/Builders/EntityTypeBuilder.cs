@@ -56,6 +56,31 @@ public class EntityTypeBuilder<TEntity>(EntityConfig entity) : IEntityTypeBuilde
     }
 
     /// <summary>
+    /// Configures an alternate key (business key) using property selector expressions.
+    /// Alternate keys represent business-level uniqueness and are used for Update/Delete
+    /// operations when a primary key doesn't exist.
+    /// </summary>
+    /// <param name="keyExpressions">Expressions pointing to alternate key properties.</param>
+    /// <returns>The current builder for chaining.</returns>
+    /// <remarks>
+    /// Alternate keys should be backed by a unique constraint or unique index in the database.
+    /// Examples: employee number, email, account number, etc.
+    /// </remarks>
+    public EntityTypeBuilder<TEntity> HasAlternateKey(params Expression<Func<TEntity, object?>>[] keyExpressions)
+    {
+        if (keyExpressions.Length == 0)
+            throw new ArgumentException("At least one alternate key expression is required.", nameof(keyExpressions));
+
+        _entity.AlternateKeyProperties.Clear();
+        foreach (var expr in keyExpressions)
+        {
+            var name = GetPropertyName(expr);
+            _entity.AlternateKeyProperties.Add(name);
+        }
+        return this;
+    }
+
+    /// <summary>
     /// Marks the entity as keyless.
     /// </summary>
     /// <returns>The current builder for chaining.</returns>

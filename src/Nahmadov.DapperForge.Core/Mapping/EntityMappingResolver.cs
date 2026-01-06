@@ -27,6 +27,7 @@ internal static class EntityMappingResolver
             throw new InvalidOperationException($"Type {type.Name} has no writable public properties.");
 
         var keyProps = ResolveKeyProperties(config, snapshot, props);
+        var alternateKeyProps = ResolveAlternateKeyProperties(config, props);
         var propertyMappings = BuildPropertyMappings(config, snapshot, keyProps);
         var foreignKeys = BuildForeignKeyMappings(snapshot, propertyMappings);
 
@@ -40,7 +41,8 @@ internal static class EntityMappingResolver
             props,
             propertyMappings,
             isReadOnly,
-            foreignKeys);
+            foreignKeys,
+            alternateKeyProps);
     }
 
     private static List<PropertyInfo> ResolveKeyProperties(
@@ -77,6 +79,20 @@ internal static class EntityMappingResolver
         }
 
         return [];
+    }
+
+    private static List<PropertyInfo> ResolveAlternateKeyProperties(
+        EntityConfig config,
+        IReadOnlyList<PropertyInfo> props)
+    {
+        if (config.AlternateKeyProperties.Count == 0)
+            return [];
+
+        return config.AlternateKeyProperties.Select(keyName =>
+                props.FirstOrDefault(p => string.Equals(p.Name, keyName, StringComparison.Ordinal))
+                ?? throw new InvalidOperationException(
+                    $"Alternate key property '{keyName}' not found on entity type '{config.ClrType.Name}'."))
+            .ToList();
     }
 
     private static List<PropertyMapping> BuildPropertyMappings(

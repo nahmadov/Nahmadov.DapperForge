@@ -18,30 +18,37 @@ internal sealed class ContextModelManager(DapperDbContextOptions options, Type c
     private readonly Action<DapperModelBuilder> _configureModel = configureModel;
     private readonly Dictionary<Type, EntityMapping> _model = [];
     private readonly HashSet<Type> _registeredEntityTypes = [];
-    private bool _modelBuilt;
+    private readonly object _modelBuildLock = new();
+    private volatile bool _modelBuilt;
 
     public void EnsureModelBuilt()
     {
+        // Double-check locking pattern for thread-safety with minimal performance impact
         if (_modelBuilt) return;
 
-        var builder = new DapperModelBuilder(_options.Dialect!, _options.Dialect?.DefaultSchema);
-
-        InitializeMappingsFromAttributes(builder);
-        _configureModel(builder);
-        ApplyDbSetNameConvention(builder);
-        RegisterDbSetEntityTypes();
-
-        foreach (var kvp in builder.Build())
+        lock (_modelBuildLock)
         {
-            _model[kvp.Key] = kvp.Value;
-        }
+            if (_modelBuilt) return;
 
-        foreach (var kv in _model)
-        {
-            DapperTypeMapExtensions.SetPrefixInsensitiveMap(kv.Key);
-        }
+            var builder = new DapperModelBuilder(_options.Dialect!, _options.Dialect?.DefaultSchema);
 
-        _modelBuilt = true;
+            InitializeMappingsFromAttributes(builder);
+            _configureModel(builder);
+            ApplyDbSetNameConvention(builder);
+            RegisterDbSetEntityTypes();
+
+            foreach (var kvp in builder.Build())
+            {
+                _model[kvp.Key] = kvp.Value;
+            }
+
+            foreach (var kv in _model)
+            {
+                DapperTypeMapExtensions.SetPrefixInsensitiveMap(kv.Key);
+            }
+
+            _modelBuilt = true;
+        }
     }
 
     public EntityMapping GetEntityMapping<TEntity>() where TEntity : class

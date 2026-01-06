@@ -24,13 +24,15 @@ internal sealed class SqlGenerator<TEntity> where TEntity : class
 
     /// <summary>
     /// Gets the name of the key property if present.
+    /// Uses effective key (primary key if available, otherwise alternate key).
     /// </summary>
-    public string? KeyPropertyName => _mapping.KeyProperties.FirstOrDefault()?.Name;
+    public string? KeyPropertyName => _mapping.EffectiveKey.FirstOrDefault()?.Name;
 
     /// <summary>
     /// Gets metadata for the key property if present.
+    /// Uses effective key (primary key if available, otherwise alternate key).
     /// </summary>
-    public PropertyInfo? KeyProperty => _mapping.KeyProperties.FirstOrDefault();
+    public PropertyInfo? KeyProperty => _mapping.EffectiveKey.FirstOrDefault();
 
     /// <summary>
     /// Indicates whether the key property is an identity column.
@@ -90,7 +92,7 @@ internal sealed class SqlGenerator<TEntity> where TEntity : class
         _fullTableName = BuildFullTableName();
         _keyColumns = GetKeyColumns();
         _insertableProperties = [.. _mapping.PropertyMappings.Where(pm => !pm.IsReadOnly && (!pm.IsGenerated || pm.UsesSequence))];
-        _updatableProperties = [.. _mapping.PropertyMappings.Where(pm => !_mapping.KeyProperties.Contains(pm.Property) && !pm.IsGenerated && !pm.IsReadOnly)];
+        _updatableProperties = [.. _mapping.PropertyMappings.Where(pm => !_mapping.EffectiveKey.Contains(pm.Property) && !pm.IsGenerated && !pm.IsReadOnly)];
 
         SelectAllSql = BuildSelectAllSql();
         SelectByIdSql = BuildSelectByIdSql();
@@ -151,16 +153,26 @@ internal sealed class SqlGenerator<TEntity> where TEntity : class
 
     /// <summary>
     /// Builds INSERT, INSERT returning key, UPDATE, and DELETE SQL statements.
+    /// UPDATE/DELETE return empty string if no key is configured (they're built lazily when needed).
     /// </summary>
     private (string insert, string? insertReturningId, string update, string delete) BuildMutatingSql()
     {
         EnsureNotReadOnly();
-        EnsureHasKey();
+        // Note: INSERT doesn't require a key, but UPDATE/DELETE do
+        // If no key exists, UPDATE/DELETE will be empty strings and will throw when accessed
 
         var insert = BuildInsertSql();
         var insertReturningId = BuildInsertReturningIdSql(insert);
-        var update = BuildUpdateSql();
-        var delete = BuildDeleteSql();
+
+        // UPDATE and DELETE require keys - build them only if key exists
+        string update = string.Empty;
+        string delete = string.Empty;
+
+        if (_mapping.HasPrimaryKey || _mapping.HasAlternateKey)
+        {
+            update = BuildUpdateSql();
+            delete = BuildDeleteSql();
+        }
 
         return (insert, insertReturningId, update, delete);
     }
@@ -217,6 +229,8 @@ internal sealed class SqlGenerator<TEntity> where TEntity : class
     /// <returns>UPDATE SQL string.</returns>
     private string BuildUpdateSql()
     {
+        EnsureHasKey(); // UPDATE requires a key (primary or alternate)
+
         if (_updatableProperties.Length == 0)
         {
             throw new InvalidOperationException(
@@ -239,6 +253,8 @@ internal sealed class SqlGenerator<TEntity> where TEntity : class
     /// <returns>DELETE SQL string.</returns>
     private string BuildDeleteSql()
     {
+        EnsureHasKey(); // DELETE requires a key (primary or alternate)
+
         var keyPredicate = BuildKeyPredicate();
         return $"DELETE FROM {_fullTableName} WHERE {keyPredicate}";
     }
@@ -260,24 +276,26 @@ internal sealed class SqlGenerator<TEntity> where TEntity : class
     /// </summary>
     private void EnsureHasKey()
     {
-        if (_mapping.KeyProperties.Count == 0 || _keyColumns.Length == 0 || KeyPropertyName is null)
+        if ((!_mapping.HasPrimaryKey && !_mapping.HasAlternateKey) || _keyColumns.Length == 0 || KeyPropertyName is null)
         {
             throw new InvalidOperationException(
-                $"Entity '{typeof(TEntity).Name}' has no key configured for mutations.");
+                $"Entity '{typeof(TEntity).Name}' has no key configured for mutations. " +
+                "Configure either a Primary Key using HasKey() or an Alternate Key using HasAlternateKey().");
         }
     }
 
     /// <summary>
     /// Gets column names corresponding to key properties.
+    /// Uses effective key (primary key if available, otherwise alternate key).
     /// </summary>
     /// <returns>Array of key column names or an empty array.</returns>
     private string[] GetKeyColumns()
     {
-        if (_mapping.KeyProperties.Count == 0)
+        if (_mapping.EffectiveKey.Count == 0)
             return [];
 
         var list = new List<string>();
-        foreach (var kp in _mapping.KeyProperties)
+        foreach (var kp in _mapping.EffectiveKey)
         {
             var map = _mapping.PropertyMappings.FirstOrDefault(pm => pm.Property == kp)
                 ?? throw new InvalidOperationException($"Key property '{kp.Name}' has no mapping.");
@@ -288,11 +306,12 @@ internal sealed class SqlGenerator<TEntity> where TEntity : class
 
     /// <summary>
     /// Builds an equality predicate combining all key columns.
+    /// Uses effective key (primary key if available, otherwise alternate key).
     /// </summary>
     /// <returns>Predicate string joined with AND.</returns>
     private string BuildKeyPredicate()
     {
-        var predicates = _mapping.KeyProperties.Select(p =>
+        var predicates = _mapping.EffectiveKey.Select(p =>
         {
             var column = GetColumnNameForProperty(p);
             var param = _dialect.FormatParameter(p.Name);

@@ -11,6 +11,7 @@ public class EntityConfig(Type clrType)
     public bool IsReadOnly { get; private set; }
     public bool HasKey { get; private set; } = true;
     public List<string> KeyProperties { get; } = new();
+    public List<string> AlternateKeyProperties { get; } = new();
     public Dictionary<string, PropertyConfig> Properties { get; } = [];
 
     /// <summary>
