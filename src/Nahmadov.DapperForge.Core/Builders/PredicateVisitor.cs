@@ -773,21 +773,44 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
     }
 
     /// <summary>
-    /// Cache key for compiled expressions based on expression tree structure.
+    /// Cache key for compiled expressions based on expression tree structural hash.
+    /// Uses structural hashing for performance and reliability instead of ToString().
     /// </summary>
+    /// <remarks>
+    /// <para><b>Why not ToString()?</b></para>
+    /// <list type="bullet">
+    /// <item>ToString() output is not guaranteed to be stable across .NET versions</item>
+    /// <item>ToString() allocates strings for every cache lookup</item>
+    /// <item>ToString() output varies with parameter names (structurally equivalent expressions differ)</item>
+    /// </list>
+    /// <para><b>Structural Hashing Benefits:</b></para>
+    /// <list type="bullet">
+    /// <item>Zero allocations for cache lookups</item>
+    /// <item>Structurally equivalent expressions produce same hash</item>
+    /// <item>.NET version independent</item>
+    /// <item>Better collision resistance through tree-based hashing</item>
+    /// </list>
+    /// </remarks>
     private readonly struct ExpressionCacheKey : IEquatable<ExpressionCacheKey>
     {
         private readonly int _hashCode;
-        private readonly string _debugView;
+        private readonly LambdaExpression _expression;
 
         public ExpressionCacheKey(LambdaExpression lambda)
         {
-            _debugView = lambda.ToString();
-            _hashCode = _debugView.GetHashCode();
+            _expression = lambda ?? throw new ArgumentNullException(nameof(lambda));
+            _hashCode = ExpressionStructuralHasher.ComputeHash(lambda);
         }
 
         public bool Equals(ExpressionCacheKey other)
-            => _debugView == other._debugView;
+        {
+            // Fast path: different hash codes = definitely not equal
+            if (_hashCode != other._hashCode)
+                return false;
+
+            // Hash collision check: use structural equality comparer
+            return ExpressionStructuralEqualityComparer.AreEqual(_expression, other._expression);
+        }
 
         public override bool Equals(object? obj)
             => obj is ExpressionCacheKey key && Equals(key);
