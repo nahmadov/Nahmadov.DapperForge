@@ -327,10 +327,42 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
     /// </summary>
     /// <typeparam name="TEntity">Entity type.</typeparam>
     /// <returns>A set for the entity type.</returns>
+    /// <remarks>
+    /// <para><b>Memory Management:</b></para>
+    /// <para>
+    /// DapperSet instances are cached per entity type for the lifetime of the context.
+    /// This is efficient for scoped contexts (per-request), but can cause memory issues
+    /// if the context is registered as a singleton.
+    /// </para>
+    /// <para><b>Best Practices:</b></para>
+    /// <list type="bullet">
+    /// <item>✅ Use SCOPED lifetime in DI container (recommended)</item>
+    /// <item>✅ Dispose context after each unit of work</item>
+    /// <item>❌ Avoid SINGLETON context lifetime (causes unbounded memory growth)</item>
+    /// <item>❌ Avoid TRANSIENT lifetime (too many connection instances)</item>
+    /// </list>
+    /// </remarks>
     public DapperSet<TEntity> Set<TEntity>() where TEntity : class
     {
         _modelManager.EnsureModelBuilt();
-        return (DapperSet<TEntity>)_sets.GetOrAdd(typeof(TEntity), _ => CreateSet<TEntity>());
+
+        var wasAdded = false;
+        var set = (DapperSet<TEntity>)_sets.GetOrAdd(typeof(TEntity), _ =>
+        {
+            wasAdded = true;
+            return CreateSet<TEntity>();
+        });
+
+        // Warn if too many entity types are cached (indicates singleton context anti-pattern)
+        if (wasAdded && _sets.Count > 50)
+        {
+            LogWarning(
+                $"DapperSet cache has grown to {_sets.Count} entity types. " +
+                "This may indicate the context is being used as a singleton. " +
+                "Consider using scoped lifetime instead to prevent unbounded memory growth.");
+        }
+
+        return set;
     }
 
     private DapperSet<TEntity> CreateSet<TEntity>() where TEntity : class
@@ -457,5 +489,10 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
     private void LogInformation(string message)
     {
         _options.Logger?.LogInformation("{Message}", message);
+    }
+
+    private void LogWarning(string message)
+    {
+        _options.Logger?.LogWarning("{Message}", message);
     }
 }

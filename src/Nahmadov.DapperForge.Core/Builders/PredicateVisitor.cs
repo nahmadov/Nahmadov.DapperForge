@@ -1,9 +1,9 @@
 using System.Collections;
-using System.Collections.Concurrent;
 using System.Linq.Expressions;
 using System.Reflection;
 using System.Text;
 
+using Nahmadov.DapperForge.Core.Common;
 using Nahmadov.DapperForge.Core.Interfaces;
 using Nahmadov.DapperForge.Core.Mapping;
 
@@ -21,15 +21,16 @@ namespace Nahmadov.DapperForge.Core.Builders;
 /// <para><b>Performance Optimizations:</b></para>
 /// <list type="bullet">
 /// <item>
-/// <b>Expression Compilation Caching:</b> Compiled expressions are cached in a static ConcurrentDictionary
-/// (max 1000 entries). Cache key is based on expression's ToString() representation.
+/// <b>Expression Compilation Caching:</b> Compiled expressions are cached in a thread-safe LRU cache
+/// (max 1000 entries). Cache key is based on structural hashing of the expression tree for reliability.
 /// Subsequent calls with the same expression structure reuse cached compiled delegates, avoiding recompilation overhead.
 /// </item>
 /// <item>
 /// <b>SQL Parameterization:</b> All values are parameterized to prevent SQL injection and enable database query plan caching.
 /// </item>
 /// <item>
-/// <b>Cache Eviction:</b> When cache reaches 1000 entries, entire cache is cleared (simple eviction strategy).
+/// <b>LRU Eviction:</b> When cache reaches 1000 entries, only the least recently used compiled expression is evicted.
+/// This prevents cache thrashing and ensures frequently-used expressions remain cached.
 /// </item>
 /// </list>
 /// <para><b>Supported Expressions:</b></para>
@@ -45,8 +46,7 @@ namespace Nahmadov.DapperForge.Core.Builders;
 public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
     where TEntity : class
 {
-    private static readonly ConcurrentDictionary<ExpressionCacheKey, Delegate> _compiledExpressionCache = new();
-    private const int MaxCacheSize = 1000;
+    private static readonly LruCache<ExpressionCacheKey, Delegate> _compiledExpressionCache = new(maxSize: 1000);
 
     private readonly EntityMapping _mapping;
     private readonly ISqlDialect _dialect;
@@ -748,10 +748,15 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
 
     /// <summary>
     /// Evaluates an expression by compiling and executing it when not a constant.
-    /// Uses caching to avoid recompiling the same expressions.
+    /// Uses LRU caching to avoid recompiling the same expressions.
     /// </summary>
     /// <param name="expr">Expression to evaluate.</param>
     /// <returns>Resulting value.</returns>
+    /// <remarks>
+    /// When the cache reaches its maximum size (1000 entries), the least recently used
+    /// compiled expression is evicted automatically. This prevents cache thrashing
+    /// (no Clear() calls that would wipe the entire cache).
+    /// </remarks>
     private static object? EvaluateExpression(Expression expr)
     {
         if (expr is ConstantExpression constant)
@@ -760,14 +765,7 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
         var lambda = Expression.Lambda(expr);
         var cacheKey = new ExpressionCacheKey(lambda);
 
-        var compiled = _compiledExpressionCache.GetOrAdd(cacheKey, _ =>
-        {
-            if (_compiledExpressionCache.Count >= MaxCacheSize)
-            {
-                _compiledExpressionCache.Clear();
-            }
-            return lambda.Compile();
-        });
+        var compiled = _compiledExpressionCache.GetOrAdd(cacheKey, _ => lambda.Compile());
 
         return compiled.DynamicInvoke();
     }

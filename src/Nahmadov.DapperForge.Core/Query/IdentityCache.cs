@@ -21,6 +21,7 @@ namespace Nahmadov.DapperForge.Core.Query;
 /// <list type="bullet">
 /// <item>
 /// <b>Cache Size:</b> Default maximum is 10,000 entities per query. Configurable via constructor parameter.
+/// Adaptive sizing automatically expands cache for large result sets to reduce eviction overhead.
 /// </item>
 /// <item>
 /// <b>LRU Eviction:</b> When cache is full, the least recently accessed entity is evicted.
@@ -37,7 +38,15 @@ namespace Nahmadov.DapperForge.Core.Query;
 /// <b>Thread Safety:</b> NOT thread-safe. Intended for single query execution scope.
 /// Each query gets its own IdentityCache instance.
 /// </item>
+/// <item>
+/// <b>Metrics:</b> Tracks cache hits, misses, and evictions for performance monitoring and tuning.
+/// </item>
 /// </list>
+/// <para><b>Large Dataset Optimization:</b></para>
+/// <para>
+/// For queries returning >10,000 entities, the cache size automatically expands up to 50,000 entries
+/// to minimize LRU eviction overhead and GC pressure from LinkedListNode allocations.
+/// </para>
 /// <para><b>Example:</b></para>
 /// <code>
 /// // Without identity cache: 3 separate Customer instances (wasteful)
@@ -56,7 +65,10 @@ internal sealed class IdentityCache(Func<Type, EntityMapping> resolveMapping, in
     private readonly Dictionary<(Type type, object key), CacheEntry> _cache = [];
     private readonly LinkedList<(Type type, object key)> _lruList = new();
     private readonly Func<Type, EntityMapping> _resolveMapping = resolveMapping;
-    private readonly int _maxSize = maxSize;
+    private int _maxSize = maxSize;
+    private int _hits;
+    private int _misses;
+    private int _evictions;
 
     /// <summary>
     /// Resolves an entity instance, returning cached instance if exists.
@@ -87,6 +99,7 @@ internal sealed class IdentityCache(Func<Type, EntityMapping> resolveMapping, in
     /// Gets or adds an instance to the cache with LRU eviction.
     /// If instance exists, updates its access time and returns cached instance.
     /// If cache is full, evicts the least recently used entry before adding new instance.
+    /// Automatically expands cache size for large datasets to reduce eviction overhead.
     /// </summary>
     /// <param name="type">Entity type (used as part of cache key).</param>
     /// <param name="key">Entity key value (primary key).</param>
@@ -96,19 +109,29 @@ internal sealed class IdentityCache(Func<Type, EntityMapping> resolveMapping, in
     /// <b>Performance:</b> O(1) average case.
     /// Cache hit: Updates LRU list (2 linked list operations) and returns cached instance.
     /// Cache miss: Adds to dictionary and LRU list. If full, removes LRU entry first (3-4 operations total).
+    /// <b>Adaptive Sizing:</b> If eviction rate is high (>30%), cache size expands up to 50,000 entries
+    /// to reduce GC pressure from frequent LinkedListNode allocations.
     /// </remarks>
     public object GetOrAdd(Type type, object key, object instance)
     {
         var cacheKey = (type, key);
         if (_cache.TryGetValue(cacheKey, out var existing))
         {
+            _hits++;
             _lruList.Remove(existing.Node);
             _lruList.AddFirst(existing.Node);
             return existing.Instance;
         }
 
+        _misses++;
+
         if (_cache.Count >= _maxSize)
         {
+            _evictions++;
+
+            // Adaptive sizing: Expand cache if eviction rate is high and we haven't hit max limit
+            ExpandCacheIfNeeded();
+
             var lruKey = _lruList.Last!.Value;
             _cache.Remove(lruKey);
             _lruList.RemoveLast();
@@ -127,14 +150,52 @@ internal sealed class IdentityCache(Func<Type, EntityMapping> resolveMapping, in
         var cacheKey = (type, key);
         if (_cache.TryGetValue(cacheKey, out var entry))
         {
+            _hits++;
             _lruList.Remove(entry.Node);
             _lruList.AddFirst(entry.Node);
             instance = entry.Instance;
             return true;
         }
 
+        _misses++;
         instance = null;
         return false;
+    }
+
+    /// <summary>
+    /// Expands cache size adaptively based on eviction rate to reduce GC pressure.
+    /// </summary>
+    private void ExpandCacheIfNeeded()
+    {
+        const int MaxCacheSize = 50_000; // Upper limit to prevent unbounded growth
+        const double HighEvictionRateThreshold = 0.30; // 30% eviction rate
+
+        // Only expand if we have a significant number of accesses to measure eviction rate
+        if (_hits + _misses < 1000 || _maxSize >= MaxCacheSize)
+            return;
+
+        var totalAccesses = _hits + _misses;
+        var evictionRate = (double)_evictions / totalAccesses;
+
+        // If eviction rate is high, double the cache size (capped at MaxCacheSize)
+        if (evictionRate > HighEvictionRateThreshold)
+        {
+            var newSize = Math.Min(_maxSize * 2, MaxCacheSize);
+            _maxSize = newSize;
+        }
+    }
+
+    /// <summary>
+    /// Gets cache performance metrics for monitoring and tuning.
+    /// </summary>
+    /// <returns>Tuple containing (hits, misses, evictions, currentSize, maxSize, hitRate, evictionRate).</returns>
+    public (int Hits, int Misses, int Evictions, int CurrentSize, int MaxSize, double HitRate, double EvictionRate) GetMetrics()
+    {
+        var totalAccesses = _hits + _misses;
+        var hitRate = totalAccesses > 0 ? (double)_hits / totalAccesses : 0;
+        var evictionRate = totalAccesses > 0 ? (double)_evictions / totalAccesses : 0;
+
+        return (_hits, _misses, _evictions, _cache.Count, _maxSize, hitRate, evictionRate);
     }
 
     /// <summary>
