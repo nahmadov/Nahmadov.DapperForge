@@ -102,18 +102,35 @@ internal sealed class QueryExecutor : IQueryExecutor
         });
     }
 
-    public Task<int> ExecuteAsync(string sql, object? param = null, IDbTransaction? transaction = null)
+    /// <summary>
+    /// Executes a command (INSERT/UPDATE/DELETE) without retry logic.
+    /// </summary>
+    /// <remarks>
+    /// <para><b>Why No Retry for Mutations:</b></para>
+    /// <para>
+    /// INSERT/UPDATE/DELETE operations are NOT idempotent. Retrying can cause:
+    /// <list type="bullet">
+    /// <item>Duplicate inserts (if first attempt succeeded but response was lost)</item>
+    /// <item>Multiple updates (changing data twice)</item>
+    /// <item>Data corruption</item>
+    /// </list>
+    /// </para>
+    /// <para>
+    /// If a mutation fails due to transient error (timeout, network), the application
+    /// should decide whether to retry at a higher level (e.g., with idempotency tokens).
+    /// </para>
+    /// </remarks>
+    public async Task<int> ExecuteAsync(string sql, object? param = null, IDbTransaction? transaction = null)
     {
         _logSql(sql);
-        return ExecuteWithRetryAsync(async () =>
-        {
-            if (_options.EnableConnectionHealthCheck && transaction is null)
-                await _ensureHealthyAsync().ConfigureAwait(false);
 
-            var connection = transaction?.Connection ?? _connection;
-            var timeout = _options.CommandTimeoutSeconds;
-            return await connection.ExecuteAsync(sql, param, transaction, commandTimeout: timeout).ConfigureAwait(false);
-        });
+        // No retry for mutations - they are NOT idempotent
+        if (_options.EnableConnectionHealthCheck && transaction is null)
+            await _ensureHealthyAsync().ConfigureAwait(false);
+
+        var connection = transaction?.Connection ?? _connection;
+        var timeout = _options.CommandTimeoutSeconds;
+        return await connection.ExecuteAsync(sql, param, transaction, commandTimeout: timeout).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -146,17 +163,111 @@ internal sealed class QueryExecutor : IQueryExecutor
     /// <summary>
     /// Determines if an exception represents a transient database error that can be retried.
     /// </summary>
+    /// <remarks>
+    /// <para><b>Transient Errors (Safe to Retry):</b></para>
+    /// <list type="bullet">
+    /// <item>Timeouts (query execution, connection)</item>
+    /// <item>Deadlocks (SQL Server: 1205, Oracle: ORA-00060)</item>
+    /// <item>Network errors during query execution</item>
+    /// <item>Transport-level errors</item>
+    /// </list>
+    /// <para><b>Non-Transient Errors (DO NOT Retry):</b></para>
+    /// <list type="bullet">
+    /// <item>Configuration errors (invalid server, database, credentials)</item>
+    /// <item>Permission errors</item>
+    /// <item>Constraint violations</item>
+    /// <item>SQL syntax errors</item>
+    /// </list>
+    /// <para><b>Database-Specific Error Codes:</b></para>
+    /// <list type="bullet">
+    /// <item>SQL Server: -2 (timeout), 1205 (deadlock), 40197/40501/40613 (Azure transient)</item>
+    /// <item>Oracle: ORA-00060 (deadlock), ORA-01013 (user requested cancel)</item>
+    /// </list>
+    /// </remarks>
     private static bool IsTransientError(Exception ex)
     {
-        // Check common transient error patterns
-        var message = ex.Message.ToLowerInvariant();
+        // TimeoutException is always transient
+        if (ex is TimeoutException || ex.InnerException is TimeoutException)
+            return true;
 
-        return ex is TimeoutException
-            || message.Contains("timeout")
-            || message.Contains("connection")
-            || message.Contains("network")
-            || message.Contains("deadlock")
-            || message.Contains("transport-level error")
-            || ex.InnerException is TimeoutException;
+        var message = ex.Message;
+        var messageLower = message.ToLowerInvariant();
+
+        // Exclude configuration errors (these should NEVER be retried)
+        if (IsConfigurationError(messageLower))
+            return false;
+
+        // Check for database-specific transient error codes
+        if (IsSqlServerTransientError(ex, message))
+            return true;
+
+        if (IsOracleTransientError(message))
+            return true;
+
+        // Check for common transient patterns (after excluding config errors)
+        return messageLower.Contains("timeout")
+            || messageLower.Contains("deadlock")
+            || messageLower.Contains("transport-level error")
+            || (messageLower.Contains("connection") && messageLower.Contains("lost"));
+    }
+
+    /// <summary>
+    /// Checks if the error is a configuration/setup error that should NOT be retried.
+    /// </summary>
+    private static bool IsConfigurationError(string messageLower)
+    {
+        return messageLower.Contains("login failed")
+            || messageLower.Contains("invalid object name")
+            || messageLower.Contains("invalid column name")
+            || messageLower.Contains("cannot open database")
+            || messageLower.Contains("does not exist")
+            || messageLower.Contains("permission denied")
+            || messageLower.Contains("access denied")
+            || (messageLower.Contains("network-related") && messageLower.Contains("instance-specific")) // SQL Server: wrong server name
+            || messageLower.Contains("syntax error");
+    }
+
+    /// <summary>
+    /// Checks for SQL Server specific transient error codes.
+    /// </summary>
+    private static bool IsSqlServerTransientError(Exception ex, string message)
+    {
+        // Use reflection to check SqlException.Number if available (avoid hard dependency)
+        var sqlExceptionType = ex.GetType();
+        if (sqlExceptionType.Name != "SqlException")
+            return false;
+
+        var numberProperty = sqlExceptionType.GetProperty("Number");
+        if (numberProperty is null)
+            return false;
+
+        var errorNumber = (int?)numberProperty.GetValue(ex);
+        if (errorNumber is null)
+            return false;
+
+        // SQL Server transient error codes
+        return errorNumber.Value switch
+        {
+            -2 => true,      // Timeout
+            1205 => true,    // Deadlock victim
+            40197 => true,   // Azure: Service error processing request
+            40501 => true,   // Azure: Service currently busy
+            40613 => true,   // Azure: Database unavailable
+            49918 => true,   // Azure: Cannot process request
+            49919 => true,   // Azure: Cannot process create/update request
+            49920 => true,   // Azure: Cannot process request
+            4221 => true,    // Login timeout expired
+            _ => false
+        };
+    }
+
+    /// <summary>
+    /// Checks for Oracle specific transient error codes.
+    /// </summary>
+    private static bool IsOracleTransientError(string message)
+    {
+        return message.Contains("ORA-00060")  // Deadlock detected
+            || message.Contains("ORA-01013")  // User requested cancel of current operation
+            || message.Contains("ORA-00028"); // Session killed
     }
 }
