@@ -19,7 +19,26 @@ public class FakeDbConnection : DbConnection
     public int OpenCount { get; private set; }
     public int DisposeCount { get; private set; }
 
+    private Exception _openFailureException;
+
     public void SetState(ConnectionState state) => _state = state;
+
+    /// <summary>
+    /// Simulates a broken connection state.
+    /// </summary>
+    public void SimulateConnectionBreak()
+    {
+        _state = ConnectionState.Broken;
+    }
+
+    /// <summary>
+    /// Simulates a failure during connection opening.
+    /// </summary>
+    /// <param name="exception">The exception to throw when Open() is called.</param>
+    public void SimulateOpenFailure(Exception exception)
+    {
+        _openFailureException = exception;
+    }
 
     public override string ConnectionString { get; set; } = string.Empty;
     public override string Database => "FakeDb";
@@ -82,6 +101,13 @@ public class FakeDbConnection : DbConnection
 
     public override void Open()
     {
+        if (_openFailureException != null)
+        {
+            var ex = _openFailureException;
+            _openFailureException = null; // Reset after throwing
+            throw ex;
+        }
+
         _state = ConnectionState.Open;
         OpenCount++;
     }

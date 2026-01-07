@@ -127,12 +127,166 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
     }
 
     /// <summary>
-    /// Begins a new transaction on the underlying connection.
+    /// Creates a new connection scope for explicit connection lifecycle management.
     /// </summary>
+    /// <returns>A connection scope that should be disposed when operations are complete.</returns>
+    /// <remarks>
+    /// <para><b>Recommended Usage:</b></para>
+    /// <code>
+    /// // Good: Connection returned to pool after use
+    /// using var scope = context.CreateConnectionScope();
+    /// var users = await context.QueryAsync&lt;User&gt;("SELECT * FROM Users", connection: scope.Connection);
+    /// // scope.Dispose() returns connection to pool
+    ///
+    /// // Alternative: Legacy mode (connection stays open)
+    /// var users = await context.QueryAsync&lt;User&gt;("SELECT * FROM Users");
+    /// // Connection stays open until context disposal
+    /// </code>
+    /// <para><b>Benefits:</b></para>
+    /// <list type="bullet">
+    /// <item>Prevents connection pool exhaustion in high-traffic scenarios</item>
+    /// <item>Connections returned to pool immediately after scope disposal</item>
+    /// <item>Better resource utilization</item>
+    /// </list>
+    /// </remarks>
+    public IConnectionScope CreateConnectionScope()
+    {
+        return _connectionManager.CreateConnectionScope();
+    }
+
+    /// <summary>
+    /// Begins a new transaction on the underlying connection with default isolation level (ReadCommitted).
+    /// </summary>
+    /// <returns>A database transaction.</returns>
+    /// <remarks>
+    /// <para><b>Important:</b> Transaction must be explicitly committed or rolled back before context disposal.</para>
+    /// <para>If the transaction is not committed/rolled back, it will be automatically rolled back during disposal
+    /// and a warning will be logged.</para>
+    /// </remarks>
     public Task<IDbTransaction> BeginTransactionAsync()
     {
-        var transaction = Connection.BeginTransaction();
+        return BeginTransactionAsync(IsolationLevel.ReadCommitted);
+    }
+
+    /// <summary>
+    /// Begins a new transaction on the underlying connection with specified isolation level.
+    /// </summary>
+    /// <param name="isolationLevel">The isolation level for the transaction.</param>
+    /// <returns>A database transaction.</returns>
+    /// <remarks>
+    /// <para><b>Important:</b> Transaction must be explicitly committed or rolled back before context disposal.</para>
+    /// <para>If the transaction is not committed/rolled back, it will be automatically rolled back during disposal
+    /// and a warning will be logged.</para>
+    /// </remarks>
+    public Task<IDbTransaction> BeginTransactionAsync(IsolationLevel isolationLevel)
+    {
+        var transaction = Connection.BeginTransaction(isolationLevel);
+
+        // Register transaction for tracking
+        _connectionManager.RegisterTransaction(transaction);
+
         return Task.FromResult(transaction);
+    }
+
+    /// <summary>
+    /// Commits a transaction and unregisters it from tracking.
+    /// </summary>
+    /// <param name="transaction">The transaction to commit.</param>
+    public void CommitTransaction(IDbTransaction transaction)
+    {
+        ArgumentNullException.ThrowIfNull(transaction);
+
+        try
+        {
+            transaction.Commit();
+            _connectionManager.UnregisterTransaction();
+        }
+        catch (Exception ex)
+        {
+            LogError(ex, null, "Failed to commit transaction");
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Rolls back a transaction and unregisters it from tracking.
+    /// </summary>
+    /// <param name="transaction">The transaction to rollback.</param>
+    public void RollbackTransaction(IDbTransaction transaction)
+    {
+        ArgumentNullException.ThrowIfNull(transaction);
+
+        try
+        {
+            transaction.Rollback();
+            _connectionManager.UnregisterTransaction();
+        }
+        catch (Exception ex)
+        {
+            LogError(ex, null, "Failed to rollback transaction");
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Gets whether there is an active transaction.
+    /// </summary>
+    public bool HasActiveTransaction => _connectionManager.HasActiveTransaction;
+
+    /// <summary>
+    /// Begins a new transaction scope with default isolation level (ReadCommitted).
+    /// </summary>
+    /// <returns>A transaction scope that manages commit/rollback automatically.</returns>
+    /// <remarks>
+    /// <para><b>Recommended Pattern:</b></para>
+    /// <code>
+    /// using var txScope = await context.BeginTransactionScopeAsync();
+    /// try
+    /// {
+    ///     await context.ExecuteAsync("UPDATE ...", transaction: txScope.Transaction);
+    ///     txScope.Complete(); // Mark as successful
+    /// }
+    /// // Dispose: Commits if Complete() was called, otherwise rolls back
+    /// </code>
+    /// <para><b>Benefits:</b></para>
+    /// <list type="bullet">
+    /// <item>Automatic rollback if Complete() not called (exception safety)</item>
+    /// <item>Prevents orphaned transactions</item>
+    /// <item>Graceful handling of rollback failures</item>
+    /// </list>
+    /// </remarks>
+    public Task<ITransactionScope> BeginTransactionScopeAsync()
+    {
+        return BeginTransactionScopeAsync(IsolationLevel.ReadCommitted);
+    }
+
+    /// <summary>
+    /// Begins a new transaction scope with specified isolation level.
+    /// </summary>
+    /// <param name="isolationLevel">The isolation level for the transaction.</param>
+    /// <returns>A transaction scope that manages commit/rollback automatically.</returns>
+    /// <remarks>
+    /// <para><b>Transaction Scope Pattern:</b></para>
+    /// <para>
+    /// The scope ensures proper transaction lifecycle:
+    /// - Complete() marks transaction as successful
+    /// - Dispose() commits if Complete() was called, otherwise rolls back
+    /// - Rollback failures are handled gracefully to prevent orphaned transactions
+    /// </para>
+    /// </remarks>
+    public Task<ITransactionScope> BeginTransactionScopeAsync(IsolationLevel isolationLevel)
+    {
+        var scope = new TransactionScope(
+            Connection,
+            isolationLevel,
+            LogInformation,
+            LogError,
+            () => _connectionManager.UnregisterTransaction());
+
+        // Register transaction for tracking
+        _connectionManager.RegisterTransaction(scope.Transaction);
+
+        return Task.FromResult<ITransactionScope>(scope);
     }
 
     /// <summary>

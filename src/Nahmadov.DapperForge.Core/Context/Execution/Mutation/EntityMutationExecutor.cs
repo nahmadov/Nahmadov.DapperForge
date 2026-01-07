@@ -453,61 +453,83 @@ internal sealed class EntityMutationExecutor<TEntity>(DapperDbContext context, S
         int expectedRows,
         IDbTransaction? transaction)
     {
-        IDbTransaction? ownedTransaction = null;
-        var effectiveTransaction = transaction;
+        // If transaction provided by caller, use it directly
+        if (transaction is not null)
+        {
+            return await ExecuteUpdateWithPreValidationAsync(
+                entity, whereClause, whereParams, expectedRows, transaction)
+                .ConfigureAwait(false);
+        }
+
+        // Otherwise, create transaction scope for automatic rollback on failure
+        using var txScope = await _context.BeginTransactionScopeAsync().ConfigureAwait(false);
 
         try
         {
-            if (transaction is null)
-            {
-                ownedTransaction = await _context.BeginTransactionAsync().ConfigureAwait(false);
-                effectiveTransaction = ownedTransaction;
-            }
+            var affected = await ExecuteUpdateWithPreValidationAsync(
+                entity, whereClause, whereParams, expectedRows, txScope.Transaction)
+                .ConfigureAwait(false);
 
-            var countSql = BuildCountSql(whereClause);
-            long actualCount;
-            try
-            {
-                actualCount = await _context.QueryFirstOrDefaultAsync<long>(countSql, whereParams, effectiveTransaction).ConfigureAwait(false);
-            }
-            catch (Exception ex) when (ex is not DapperForgeException)
-            {
-                throw new DapperExecutionException(OperationType.Update, typeof(TEntity).Name, countSql, ex);
-            }
-
-            // Validate count BEFORE executing update
-            if (actualCount != expectedRows)
-            {
-                throw new DapperOperationException(OperationType.Update, typeof(TEntity).Name, $"Expected {expectedRows} row(s) to be affected but found {actualCount} matching row(s) before update.");
-            }
-
-            // Execute UPDATE
-            var updateSql = BuildUpdateSqlWithWhere(whereClause);
-            var allParams = EntityMutationExecutor<TEntity>.MergeParameters(entity, whereParams);
-
-            int affected;
-            try
-            {
-                affected = await _context.ExecuteAsync(updateSql, allParams, effectiveTransaction).ConfigureAwait(false);
-            }
-            catch (Exception ex) when (ex is not DapperForgeException)
-            {
-                throw new DapperExecutionException(OperationType.Update, typeof(TEntity).Name, updateSql, ex);
-            }
-
-            ownedTransaction?.Commit();
+            // Mark transaction as successful
+            txScope.Complete();
 
             return affected;
         }
         catch
         {
-            ownedTransaction?.Rollback();
+            // Transaction will be automatically rolled back on dispose
+            // Even if rollback fails, TransactionScope handles it gracefully
             throw;
         }
-        finally
+    }
+
+    /// <summary>
+    /// Executes the actual update with pre-validation logic.
+    /// </summary>
+    private async Task<int> ExecuteUpdateWithPreValidationAsync(
+        TEntity entity,
+        string whereClause,
+        Dictionary<string, object?> whereParams,
+        int expectedRows,
+        IDbTransaction transaction)
+    {
+        var countSql = BuildCountSql(whereClause);
+        long actualCount;
+
+        try
         {
-            ownedTransaction?.Dispose();
+            actualCount = await _context.QueryFirstOrDefaultAsync<long>(
+                countSql, whereParams, transaction).ConfigureAwait(false);
         }
+        catch (Exception ex) when (ex is not DapperForgeException)
+        {
+            throw new DapperExecutionException(OperationType.Update, typeof(TEntity).Name, countSql, ex);
+        }
+
+        // Validate count BEFORE executing update
+        if (actualCount != expectedRows)
+        {
+            throw new DapperOperationException(
+                OperationType.Update,
+                typeof(TEntity).Name,
+                $"Expected {expectedRows} row(s) to be affected but found {actualCount} matching row(s) before update.");
+        }
+
+        // Execute UPDATE
+        var updateSql = BuildUpdateSqlWithWhere(whereClause);
+        var allParams = EntityMutationExecutor<TEntity>.MergeParameters(entity, whereParams);
+
+        int affected;
+        try
+        {
+            affected = await _context.ExecuteAsync(updateSql, allParams, transaction).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not DapperForgeException)
+        {
+            throw new DapperExecutionException(OperationType.Update, typeof(TEntity).Name, updateSql, ex);
+        }
+
+        return affected;
     }
 
     private async Task<int> DeleteWithPreValidationAsync(
@@ -516,65 +538,83 @@ internal sealed class EntityMutationExecutor<TEntity>(DapperDbContext context, S
         int expectedRows,
         IDbTransaction? transaction)
     {
-        IDbTransaction? ownedTransaction = null;
-        var effectiveTransaction = transaction;
+        // If transaction provided by caller, use it directly
+        if (transaction is not null)
+        {
+            return await ExecuteDeleteWithPreValidationAsync(
+                whereClause, whereParams, expectedRows, transaction)
+                .ConfigureAwait(false);
+        }
+
+        // Otherwise, create transaction scope for automatic rollback on failure
+        using var txScope = await _context.BeginTransactionScopeAsync().ConfigureAwait(false);
 
         try
         {
-            if (transaction is null)
-            {
-                ownedTransaction = await _context.BeginTransactionAsync().ConfigureAwait(false);
-                effectiveTransaction = ownedTransaction;
-            }
+            var affected = await ExecuteDeleteWithPreValidationAsync(
+                whereClause, whereParams, expectedRows, txScope.Transaction)
+                .ConfigureAwait(false);
 
-            var countSql = BuildCountSql(whereClause);
-            long actualCount;
-            try
-            {
-                actualCount = await _context.QueryFirstOrDefaultAsync<long>(
-                    countSql,
-                    whereParams,
-                    effectiveTransaction).ConfigureAwait(false);
-            }
-            catch (Exception ex) when (ex is not DapperForgeException)
-            {
-                throw new DapperExecutionException(
-                    OperationType.Delete,
-                    typeof(TEntity).Name,
-                    countSql,
-                    ex);
-            }
-
-            if (actualCount != expectedRows)
-            {
-                throw new DapperOperationException(OperationType.Delete, typeof(TEntity).Name, $"Expected {expectedRows} row(s) to be affected but found {actualCount} matching row(s) before delete.");
-            }
-
-            var deleteSql = BuildDeleteSql(whereClause);
-
-            int affected;
-            try
-            {
-                affected = await _context.ExecuteAsync(deleteSql, whereParams, effectiveTransaction).ConfigureAwait(false);
-            }
-            catch (Exception ex) when (ex is not DapperForgeException)
-            {
-                throw new DapperExecutionException(OperationType.Delete, typeof(TEntity).Name, deleteSql, ex);
-            }
-
-            ownedTransaction?.Commit();
+            // Mark transaction as successful
+            txScope.Complete();
 
             return affected;
         }
         catch
         {
-            ownedTransaction?.Rollback();
+            // Transaction will be automatically rolled back on dispose
+            // Even if rollback fails, TransactionScope handles it gracefully
             throw;
         }
-        finally
+    }
+
+    /// <summary>
+    /// Executes the actual delete with pre-validation logic.
+    /// </summary>
+    private async Task<int> ExecuteDeleteWithPreValidationAsync(
+        string whereClause,
+        Dictionary<string, object?> whereParams,
+        int expectedRows,
+        IDbTransaction transaction)
+    {
+        var countSql = BuildCountSql(whereClause);
+        long actualCount;
+
+        try
         {
-            ownedTransaction?.Dispose();
+            actualCount = await _context.QueryFirstOrDefaultAsync<long>(
+                countSql, whereParams, transaction).ConfigureAwait(false);
         }
+        catch (Exception ex) when (ex is not DapperForgeException)
+        {
+            throw new DapperExecutionException(
+                OperationType.Delete,
+                typeof(TEntity).Name,
+                countSql,
+                ex);
+        }
+
+        if (actualCount != expectedRows)
+        {
+            throw new DapperOperationException(
+                OperationType.Delete,
+                typeof(TEntity).Name,
+                $"Expected {expectedRows} row(s) to be affected but found {actualCount} matching row(s) before delete.");
+        }
+
+        var deleteSql = BuildDeleteSql(whereClause);
+
+        int affected;
+        try
+        {
+            affected = await _context.ExecuteAsync(deleteSql, whereParams, transaction).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not DapperForgeException)
+        {
+            throw new DapperExecutionException(OperationType.Delete, typeof(TEntity).Name, deleteSql, ex);
+        }
+
+        return affected;
     }
 
     private string BuildCountSql(string whereClause)
