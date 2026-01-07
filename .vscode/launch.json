@@ -9,7 +9,7 @@
             "type": "coreclr",
             "request": "launch",
             "preLaunchTask": "build-connection-sample",
-            "program": "${workspaceFolder}/samples/ConnectionSample/bin/Debug/net8.0/ConnectionSample.dll",
+            "program": "${workspaceFolder}/samples/ConnectionSample/bin/Debug/net10.0/ConnectionSample.dll",
             "args": [],
             "cwd": "${workspaceFolder}/samples/ConnectionSample",
             "stopAtEntry": false,
