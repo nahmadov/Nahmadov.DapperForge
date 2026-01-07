@@ -7,7 +7,8 @@ namespace Nahmadov.DapperForge.UnitTests.Fakes;
 
 public class TestDapperDbContext(DapperDbContextOptions<TestDapperDbContext> options) : DapperDbContext(options)
 {
-
-    // Connection--- test +-+ç+-n accessible edãÙk (ONLY tests)
+#pragma warning disable CS0618 // Type or member is obsolete - Testing legacy API
+    // Connection exposed for tests (ONLY tests)
     public IDbConnection ExposeConnection() => Connection;
+#pragma warning restore CS0618
 }

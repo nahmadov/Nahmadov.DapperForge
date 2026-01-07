@@ -318,7 +318,7 @@ public class SampleRunner(AppDapperDbContext db)
         Console.WriteLine("Example 1: Simple Transaction");
         Console.WriteLine("Creating a new customer in a transaction...");
 
-        using var transaction = await _db.BeginTransactionAsync();
+        using var txScope = await _db.BeginTransactionScopeAsync();
         try
         {
             var newCustomer = new Customer
@@ -330,17 +330,18 @@ public class SampleRunner(AppDapperDbContext db)
                 CreatedAt = DateTime.UtcNow
             };
 
-            var customerId = await _db.Customers.InsertAndGetIdAsync<int>(newCustomer, transaction);
+            var customerId = await _db.Customers.InsertAndGetIdAsync<int>(newCustomer, txScope.Transaction);
 
-            // Commit the transaction
-            transaction.Commit();
+            // Mark transaction as successful (will commit on dispose)
+            txScope.Complete();
             Console.WriteLine($"✓ Customer inserted with ID {customerId} and committed.");
         }
         catch (Exception ex)
         {
-            transaction.Rollback();
-            Console.WriteLine($"✗ Error: {ex.Message}. Transaction rolled back.");
+            // Transaction automatically rolls back if Complete() not called
+            Console.WriteLine($"✗ Error: {ex.Message}. Transaction automatically rolled back.");
         }
+        // Connection automatically returned to pool on dispose
     }
 
     private async Task Example2_MultipleOperationsAsync()
@@ -348,7 +349,7 @@ public class SampleRunner(AppDapperDbContext db)
         Console.WriteLine("\nExample 2: Multiple Operations in Single Transaction");
         Console.WriteLine("Creating customer with ticket in one transaction...");
 
-        using var transaction = await _db.BeginTransactionAsync();
+        using var txScope = await _db.BeginTransactionScopeAsync();
         try
         {
             // Insert customer
@@ -361,7 +362,7 @@ public class SampleRunner(AppDapperDbContext db)
                 CreatedAt = DateTime.UtcNow
             };
 
-            var customerId = await _db.Customers.InsertAndGetIdAsync<int>(customer, transaction);
+            var customerId = await _db.Customers.InsertAndGetIdAsync<int>(customer, txScope.Transaction);
             Console.WriteLine($"  - Inserted customer ID {customerId}");
 
             // Insert related ticket
@@ -374,17 +375,17 @@ public class SampleRunner(AppDapperDbContext db)
                 OpenedOn = DateTime.UtcNow
             };
 
-            var ticketId = await _db.Tickets.InsertAndGetIdAsync<int>(ticket, transaction);
+            var ticketId = await _db.Tickets.InsertAndGetIdAsync<int>(ticket, txScope.Transaction);
             Console.WriteLine($"  - Inserted ticket ID {ticketId}");
 
-            // Commit both operations together
-            transaction.Commit();
+            // Mark as successful - both operations will commit together
+            txScope.Complete();
             Console.WriteLine("✓ Both operations committed in single transaction.");
         }
         catch (Exception ex)
         {
-            transaction.Rollback();
-            Console.WriteLine($"✗ Error during multi-op: {ex.Message}. Both operations rolled back.");
+            // Automatic rollback if Complete() not called
+            Console.WriteLine($"✗ Error during multi-op: {ex.Message}. Both operations automatically rolled back.");
         }
     }
 
@@ -393,7 +394,7 @@ public class SampleRunner(AppDapperDbContext db)
         Console.WriteLine("\nExample 3: Rollback on Validation Error");
         Console.WriteLine("Attempting to insert customer with invalid data...");
 
-        using var transaction = await _db.BeginTransactionAsync();
+        using var txScope = await _db.BeginTransactionScopeAsync();
         try
         {
             // Create customer with empty name (will fail validation)
@@ -406,20 +407,20 @@ public class SampleRunner(AppDapperDbContext db)
                 CreatedAt = DateTime.UtcNow
             };
 
-            var customerId = await _db.Customers.InsertAndGetIdAsync<int>(invalidCustomer, transaction);
-            transaction.Commit();
+            var customerId = await _db.Customers.InsertAndGetIdAsync<int>(invalidCustomer, txScope.Transaction);
+            txScope.Complete();
             Console.WriteLine("✗ Should not reach here - validation should have failed.");
         }
         catch (Nahmadov.DapperForge.Core.Exceptions.DapperValidationException ex)
         {
-            transaction.Rollback();
-            Console.WriteLine("✓ Validation error caught and transaction rolled back.");
+            // Automatic rollback (Complete() not called)
+            Console.WriteLine("✓ Validation error caught and transaction automatically rolled back.");
             Console.WriteLine($"  Validation errors: {string.Join(", ", ex.Errors)}");
         }
         catch (Exception ex)
         {
-            transaction.Rollback();
-            Console.WriteLine($"✗ Unexpected error: {ex.Message}");
+            // Automatic rollback on any exception
+            Console.WriteLine($"✗ Unexpected error: {ex.Message}. Transaction automatically rolled back.");
         }
     }
 
@@ -433,7 +434,7 @@ public class SampleRunner(AppDapperDbContext db)
 
         if (existingCustomer is not null)
         {
-            using var transaction = await _db.BeginTransactionAsync();
+            using var txScope = await _db.BeginTransactionScopeAsync();
             try
             {
                 // Try to insert customer with same email (will fail on insert due to data constraints)
@@ -446,14 +447,14 @@ public class SampleRunner(AppDapperDbContext db)
                     CreatedAt = DateTime.UtcNow
                 };
 
-                var customerId = await _db.Customers.InsertAndGetIdAsync<int>(duplicateCustomer, transaction);
-                transaction.Commit();
+                var customerId = await _db.Customers.InsertAndGetIdAsync<int>(duplicateCustomer, txScope.Transaction);
+                txScope.Complete();
                 Console.WriteLine("✗ Should not reach here - duplicate constraint should have failed.");
             }
             catch (Exception ex)
             {
-                transaction.Rollback();
-                Console.WriteLine("✓ Error caught and transaction rolled back.");
+                // Automatic rollback (Complete() not called)
+                Console.WriteLine("✓ Error caught and transaction automatically rolled back.");
                 Console.WriteLine($"  Error: {ex.Message}");
             }
         }

@@ -8,159 +8,161 @@ using Nahmadov.DapperForge.Core.Exceptions;
 namespace Nahmadov.DapperForge.Core.Context.Connection;
 
 /// <summary>
-/// Manages creation and lifecycle of the underlying database connection.
+/// Manages automatic connection lifecycle with scope-based pattern.
+/// All connections are automatically acquired from factory and returned to pool after use.
 /// </summary>
 /// <remarks>
-/// <para><b>Connection Management Strategies:</b></para>
+/// <para><b>Connection Management Strategy:</b></para>
 /// <list type="bullet">
-/// <item><b>Legacy Mode:</b> Single persistent connection (backward compatible)</item>
-/// <item><b>Scope Mode:</b> Scoped connections that return to pool (recommended)</item>
+/// <item><b>Automatic Scoping:</b> Every operation creates a connection scope internally</item>
+/// <item><b>Pool-First:</b> Connections immediately return to pool after operation completes</item>
+/// <item><b>Transaction-Aware:</b> Operations within transaction reuse transaction's connection</item>
+/// <item><b>Thread-Safe:</b> Uses SemaphoreSlim for async-friendly concurrency control</item>
 /// </list>
-/// <para><b>Thread Safety:</b> All methods are thread-safe via locking.</para>
+/// <para><b>Performance Benefits:</b></para>
+/// <list type="bullet">
+/// <item>No connection pool exhaustion (connections immediately released)</item>
+/// <item>Async-friendly locking (no thread blocking)</item>
+/// <item>Transaction connection reuse (no additional connections during transaction)</item>
+/// </list>
 /// </remarks>
 internal sealed class ContextConnectionManager(
     DapperDbContextOptions options,
     Action<string> logInformation,
-    Action<Exception, string?, string> logError) : IDisposable
+    Action<Exception, string?, string> logError) : IInternalConnectionManager
 {
-    private readonly DapperDbContextOptions _options = options;
-    private readonly object _connectionLock = new();
-    private IDbConnection? _connection;
+    private readonly DapperDbContextOptions _options = options ?? throw new ArgumentNullException(nameof(options));
+    private readonly Action<string> _logInformation = logInformation ?? throw new ArgumentNullException(nameof(logInformation));
+    private readonly Action<Exception, string?, string> _logError = logError ?? throw new ArgumentNullException(nameof(logError));
+
+    // Async-friendly semaphore instead of lock
+    private readonly SemaphoreSlim _transactionSemaphore = new(1, 1);
     private IDbTransaction? _activeTransaction;
-    private readonly Action<string> _logInformation = logInformation;
-    private readonly Action<Exception, string?, string> _logError = logError;
+    private bool _disposed;
 
     /// <summary>
-    /// Gets an open database connection, creating one if necessary.
-    /// Handles broken connections automatically by recreating them.
+    /// Executes an operation with automatic connection scoping.
+    /// Connection is acquired, used, and immediately returned to pool.
     /// </summary>
-    /// <remarks>
-    /// <para><b>Connection State Handling:</b></para>
-    /// <list type="bullet">
-    /// <item><b>Open:</b> Returns existing connection</item>
-    /// <item><b>Broken:</b> Disposes and recreates connection</item>
-    /// <item><b>Closed:</b> Reopens existing connection</item>
-    /// <item><b>Other:</b> Recreates connection</item>
-    /// </list>
-    /// <para><b>Thread Safety:</b> Uses locking to prevent race conditions.</para>
-    /// </remarks>
-    /// <exception cref="DapperConfigurationException">Thrown when ConnectionFactory is not configured.</exception>
-    /// <exception cref="DapperConnectionException">Thrown when connection cannot be established.</exception>
-    public IDbConnection GetOpenConnection()
+    public async Task<T> ExecuteWithConnectionAsync<T>(Func<IDbConnection, Task<T>> operation)
     {
-        lock (_connectionLock)
+        if (_disposed)
+            throw new ObjectDisposedException(nameof(ContextConnectionManager));
+
+        ArgumentNullException.ThrowIfNull(operation);
+
+        // Check if we're inside a transaction - if so, reuse transaction's connection
+        await _transactionSemaphore.WaitAsync().ConfigureAwait(false);
+        try
         {
-            const int maxAttempts = 3;
-            Exception? lastException = null;
-
-            for (int attempt = 0; attempt < maxAttempts; attempt++)
+            if (_activeTransaction is not null)
             {
-                try
-                {
-                    // Handle existing connection
-                    if (_connection != null)
-                    {
-                        // Connection is healthy and open
-                        if (_connection.State == ConnectionState.Open)
-                            return _connection;
-
-                        // Connection is broken - dispose and recreate
-                        if (_connection.State == ConnectionState.Broken)
-                        {
-                            _logInformation("Connection is broken, disposing and recreating");
-                            _connection.Dispose();
-                            _connection = null;
-                        }
-                        // Connection is closed - try to reopen
-                        else if (_connection.State == ConnectionState.Closed)
-                        {
-                            _logInformation("Connection is closed, attempting to reopen");
-                            try
-                            {
-                                _connection.Open();
-                                _logInformation("Connection reopened successfully");
-                                return _connection;
-                            }
-                            catch (Exception ex)
-                            {
-                                _logError(ex, null, "Failed to reopen closed connection, will recreate");
-                                _connection.Dispose();
-                                _connection = null;
-                            }
-                        }
-                        // Unexpected state - recreate
-                        else
-                        {
-                            _logInformation($"Connection in unexpected state '{_connection.State}', recreating");
-                            _connection.Dispose();
-                            _connection = null;
-                        }
-                    }
-
-                    // Create new connection if needed
-                    if (_connection is null)
-                    {
-                        if (_options.ConnectionFactory is null)
-                        {
-                            throw new DapperConfigurationException(
-                                "ConnectionFactory is not configured. Provide a connection factory in the options.");
-                        }
-
-                        _connection = _options.ConnectionFactory();
-
-                        if (_connection is null)
-                        {
-                            const string msg = "ConnectionFactory returned null";
-                            _logError(new InvalidOperationException(msg), null, msg);
-                            throw new DapperConnectionException(
-                                "ConnectionFactory returned null. Ensure the factory creates a valid connection.");
-                        }
-
-                        if (_connection.State != ConnectionState.Open)
-                        {
-                            _logInformation($"Opening database connection to {_connection.Database ?? "database"}");
-                            _connection.Open();
-                            _logInformation("Database connection opened successfully");
-                        }
-                    }
-
-                    return _connection;
-                }
-                catch (DapperForgeException)
-                {
-                    throw;
-                }
-                catch (Exception ex) when (attempt < maxAttempts - 1 && IsTransientConnectionError(ex))
-                {
-                    lastException = ex;
-                    _logInformation($"Transient connection error on attempt {attempt + 1}/{maxAttempts}, retrying...");
-
-                    // Cleanup failed connection
-                    if (_connection != null)
-                    {
-                        try { _connection.Dispose(); } catch { /* ignore */ }
-                        _connection = null;
-                    }
-
-                    // Wait before retry with exponential backoff
-                    var delay = 100 * (int)Math.Pow(2, attempt);
-                    Thread.Sleep(delay);
-                }
-                catch (Exception ex)
-                {
-                    _logError(ex, null, "Failed to establish database connection");
-                    throw new DapperConnectionException(
-                        $"Failed to establish database connection: {ex.Message}", ex);
-                }
+                _logInformation("Reusing transaction connection for operation");
+                var result = await operation(_activeTransaction.Connection!).ConfigureAwait(false);
+                return result;
             }
-
-            // All attempts failed
-            var finalException = lastException ?? new InvalidOperationException("Connection failed after all retry attempts");
-            _logError(finalException, null, $"Failed to establish connection after {maxAttempts} attempts");
-            throw new DapperConnectionException(
-                $"Failed to establish database connection after {maxAttempts} attempts: {finalException.Message}",
-                finalException);
         }
+        finally
+        {
+            _transactionSemaphore.Release();
+        }
+
+        // No active transaction - create automatic scope
+        using var scope = CreateConnectionScopeInternal();
+        return await operation(scope.Connection).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Executes an operation with optional transaction context.
+    /// If transaction provided, uses its connection; otherwise creates scoped connection.
+    /// </summary>
+    public async Task<T> ExecuteWithConnectionAsync<T>(Func<IDbConnection, Task<T>> operation, IDbTransaction? transaction)
+    {
+        if (_disposed)
+            throw new ObjectDisposedException(nameof(ContextConnectionManager));
+
+        ArgumentNullException.ThrowIfNull(operation);
+
+        // If transaction provided explicitly, use its connection
+        if (transaction is not null)
+        {
+            return await operation(transaction.Connection!).ConfigureAwait(false);
+        }
+
+        // Otherwise use automatic scoping
+        return await ExecuteWithConnectionAsync(operation).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Creates an explicit connection scope for advanced scenarios.
+    /// Most client code should NOT use this directly; automatic scoping is preferred.
+    /// </summary>
+    public IConnectionScope CreateConnectionScope()
+    {
+        if (_disposed)
+            throw new ObjectDisposedException(nameof(ContextConnectionManager));
+
+        return CreateConnectionScopeInternal();
+    }
+
+    /// <summary>
+    /// Internal method to create connection scope with retry logic.
+    /// </summary>
+    private ConnectionScope CreateConnectionScopeInternal()
+    {
+        if (_options.ConnectionFactory is null)
+        {
+            throw new DapperConfigurationException(
+                "ConnectionFactory is not configured. Provide a connection factory in the options.");
+        }
+
+        const int maxAttempts = 3;
+        Exception? lastException = null;
+
+        for (int attempt = 0; attempt < maxAttempts; attempt++)
+        {
+            try
+            {
+                var scope = new ConnectionScope(_options.ConnectionFactory, _logInformation, _logError);
+
+                // Pre-validate connection by accessing it (lazy initialization)
+                var connection = scope.Connection;
+                if (connection.State == ConnectionState.Open)
+                {
+                    return scope;
+                }
+
+                // If connection not open, something went wrong
+                scope.Dispose();
+                throw new DapperConnectionException("Connection scope created but connection is not open");
+            }
+            catch (DapperForgeException)
+            {
+                throw;
+            }
+            catch (Exception ex) when (attempt < maxAttempts - 1 && IsTransientConnectionError(ex))
+            {
+                lastException = ex;
+                _logInformation($"Transient connection error on attempt {attempt + 1}/{maxAttempts}, retrying...");
+
+                // Wait before retry with exponential backoff
+                var delay = 100 * (int)Math.Pow(2, attempt);
+                Thread.Sleep(delay);
+            }
+            catch (Exception ex)
+            {
+                _logError(ex, null, "Failed to create connection scope");
+                throw new DapperConnectionException(
+                    $"Failed to create connection scope: {ex.Message}", ex);
+            }
+        }
+
+        // All attempts failed
+        var finalException = lastException ?? new InvalidOperationException("Connection scope creation failed after all retry attempts");
+        _logError(finalException, null, $"Failed to create connection scope after {maxAttempts} attempts");
+        throw new DapperConnectionException(
+            $"Failed to create connection scope after {maxAttempts} attempts: {finalException.Message}",
+            finalException);
     }
 
     /// <summary>
@@ -177,11 +179,18 @@ internal sealed class ContextConnectionManager(
             || message.Contains("network");
     }
 
+    /// <summary>
+    /// Performs health check on connection pool by creating a test connection.
+    /// </summary>
     public async Task<bool> HealthCheckAsync()
     {
+        if (_disposed)
+            throw new ObjectDisposedException(nameof(ContextConnectionManager));
+
         try
         {
-            var connection = GetOpenConnection();
+            using var scope = CreateConnectionScopeInternal();
+            var connection = scope.Connection;
 
             if (connection.State != ConnectionState.Open)
             {
@@ -196,7 +205,7 @@ internal sealed class ContextConnectionManager(
             };
 
             await connection.QueryFirstOrDefaultAsync<int>(sql, commandTimeout: 5).ConfigureAwait(false);
-            _logInformation("Health check: Connection is healthy");
+            _logInformation("Health check: Connection pool is healthy");
             return true;
         }
         catch (Exception ex)
@@ -206,75 +215,67 @@ internal sealed class ContextConnectionManager(
         }
     }
 
-    public Task EnsureConnectionHealthyAsync()
+    /// <summary>
+    /// Begins a new transaction scope with automatic connection management.
+    /// </summary>
+    public async Task<ITransactionScope> BeginTransactionScopeAsync(IsolationLevel isolationLevel)
     {
+        if (_disposed)
+            throw new ObjectDisposedException(nameof(ContextConnectionManager));
+
+        await _transactionSemaphore.WaitAsync().ConfigureAwait(false);
         try
         {
-            var connection = GetOpenConnection();
-
-            if (connection.State == ConnectionState.Broken)
+            if (_activeTransaction is not null)
             {
-                _logInformation("Connection is broken, attempting to reconnect");
-                connection.Close();
-                connection.Open();
-            }
-            else if (connection.State != ConnectionState.Open)
-            {
-                _logInformation("Connection is not open, opening connection");
-                connection.Open();
+                throw new InvalidOperationException(
+                    "A transaction is already active on this context. " +
+                    "Nested transactions are not supported. " +
+                    "Complete or rollback the existing transaction before starting a new one.");
             }
 
-            return Task.CompletedTask;
-        }
-        catch (Exception ex)
-        {
-            _logError(ex, null, "Failed to ensure connection health");
-            throw new DapperConnectionException($"Failed to ensure connection health: {ex.Message}", ex);
-        }
-    }
+            // Create connection scope for transaction
+            // Important: This scope is NOT disposed until transaction completes
+            var connectionScope = CreateConnectionScopeInternal();
 
-    /// <summary>
-    /// Creates a new connection scope for explicit connection lifecycle management.
-    /// Recommended over GetOpenConnection() for better connection pool utilization.
-    /// </summary>
-    /// <returns>A new connection scope that should be disposed when done.</returns>
-    /// <remarks>
-    /// <para><b>Benefits of Connection Scope:</b></para>
-    /// <list type="bullet">
-    /// <item>Connections are returned to pool immediately after use</item>
-    /// <item>Prevents connection pool exhaustion in high-traffic scenarios</item>
-    /// <item>Explicit scope-based lifetime management</item>
-    /// <item>Automatic transaction tracking and warnings</item>
-    /// </list>
-    /// </remarks>
-    public IConnectionScope CreateConnectionScope()
-    {
-        return new ConnectionScope(_options.ConnectionFactory!, _logInformation, _logError);
-    }
+            try
+            {
+                var scope = new TransactionScope(
+                    connectionScope,
+                    isolationLevel,
+                    _logInformation,
+                    _logError,
+                    () =>
+                    {
+                        // Unregister callback
+                        _transactionSemaphore.Wait();
+                        try
+                        {
+                            _activeTransaction = null;
+                            _logInformation("Transaction unregistered");
+                        }
+                        finally
+                        {
+                            _transactionSemaphore.Release();
+                        }
+                    });
 
-    /// <summary>
-    /// Registers an active transaction.
-    /// Used to track transaction lifecycle and warn on improper disposal.
-    /// </summary>
-    internal void RegisterTransaction(IDbTransaction transaction)
-    {
-        lock (_connectionLock)
-        {
-            _activeTransaction = transaction ?? throw new ArgumentNullException(nameof(transaction));
-            _logInformation("Transaction registered");
+                // Register transaction
+                _activeTransaction = scope.Transaction;
+                _logInformation($"Transaction registered with isolation level: {isolationLevel}");
+
+                return scope;
+            }
+            catch
+            {
+                // If transaction creation fails, dispose the connection scope
+                connectionScope.Dispose();
+                throw;
+            }
         }
-    }
-
-    /// <summary>
-    /// Unregisters an active transaction.
-    /// Called when transaction is committed or rolled back.
-    /// </summary>
-    internal void UnregisterTransaction()
-    {
-        lock (_connectionLock)
+        finally
         {
-            _activeTransaction = null;
-            _logInformation("Transaction unregistered");
+            _transactionSemaphore.Release();
         }
     }
 
@@ -285,20 +286,29 @@ internal sealed class ContextConnectionManager(
     {
         get
         {
-            lock (_connectionLock)
+            _transactionSemaphore.Wait();
+            try
             {
                 return _activeTransaction is not null;
+            }
+            finally
+            {
+                _transactionSemaphore.Release();
             }
         }
     }
 
     /// <summary>
-    /// Disposes the connection manager and underlying connection.
+    /// Disposes the connection manager.
     /// Warns if an active transaction exists to prevent data loss.
     /// </summary>
     public void Dispose()
     {
-        lock (_connectionLock)
+        if (_disposed)
+            return;
+
+        _transactionSemaphore.Wait();
+        try
         {
             // Warn if transaction is still active
             if (_activeTransaction is not null)
@@ -324,30 +334,12 @@ internal sealed class ContextConnectionManager(
                     _activeTransaction = null;
                 }
             }
-
-            // Dispose connection
-            if (_connection is not null)
-            {
-                try
-                {
-                    if (_connection.State == ConnectionState.Open ||
-                        _connection.State == ConnectionState.Broken)
-                    {
-                        _connection.Close();
-                        _logInformation("Connection closed during disposal");
-                    }
-
-                    _connection.Dispose();
-                }
-                catch (Exception ex)
-                {
-                    _logError(ex, null, "Error disposing connection");
-                }
-                finally
-                {
-                    _connection = null;
-                }
-            }
+        }
+        finally
+        {
+            _transactionSemaphore.Release();
+            _transactionSemaphore.Dispose();
+            _disposed = true;
         }
     }
 }

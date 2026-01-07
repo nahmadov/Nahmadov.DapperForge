@@ -1,3 +1,5 @@
+#pragma warning disable CS0618 // Type or member is obsolete - Testing legacy transaction API
+
 using System.Data;
 using System.Data.Common;
 

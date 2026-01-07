@@ -18,10 +18,11 @@ public class TransactionScopeTests
         // Arrange
         var connection = new FakeDbConnection();
         connection.Open();
+        var connectionScope = new FakeConnectionScope(connection);
 
         // Act
         var scope = new TransactionScope(
-            connection,
+            connectionScope,
             IsolationLevel.ReadCommitted,
             _ => { },
             (_, _, _) => { },
@@ -131,9 +132,10 @@ public class TransactionScopeTests
         // Arrange
         var connection = new FakeDbConnection();
         connection.Open();
+        var connectionScope = new FakeConnectionScope(connection);
 
         var scope = new TransactionScope(
-            connection,
+            connectionScope,
             IsolationLevel.ReadCommitted,
             _ => { },
             (_, _, _) => { },
@@ -151,9 +153,10 @@ public class TransactionScopeTests
         // Arrange
         var connection = new FakeDbConnection();
         connection.Open();
+        var connectionScope = new FakeConnectionScope(connection);
 
         var scope = new TransactionScope(
-            connection,
+            connectionScope,
             IsolationLevel.ReadCommitted,
             _ => { },
             (_, _, _) => { },
@@ -176,8 +179,9 @@ public class TransactionScopeTests
         transaction.OnRollback = () => throw new InvalidOperationException("Rollback failed");
 
         var errorLogged = false;
+        var connectionScope = new FakeConnectionScope(connection);
         var scope = new TransactionScope(
-            connection,
+            connectionScope,
             IsolationLevel.ReadCommitted,
             _ => { },
             (_, _, _) => { errorLogged = true; },
@@ -203,9 +207,10 @@ public class TransactionScopeTests
         // Arrange
         var connection = new FakeDbConnection();
         connection.Open();
+        var connectionScope = new FakeConnectionScope(connection);
 
         var scope = new TransactionScope(
-            connection,
+            connectionScope,
             IsolationLevel.ReadCommitted,
             _ => { },
             (_, _, _) => { },
@@ -226,9 +231,10 @@ public class TransactionScopeTests
         // Arrange
         var connection = new FakeDbConnection();
         connection.Open();
+        var connectionScope = new FakeConnectionScope(connection);
 
         var scope = new TransactionScope(
-            connection,
+            connectionScope,
             IsolationLevel.ReadCommitted,
             _ => { },
             (_, _, _) => { },
@@ -247,9 +253,10 @@ public class TransactionScopeTests
         var connection = new FakeDbConnection();
         connection.Open();
         var unregisterCalled = false;
+        var connectionScope = new FakeConnectionScope(connection);
 
         var scope = new TransactionScope(
-            connection,
+            connectionScope,
             IsolationLevel.ReadCommitted,
             _ => { },
             (_, _, _) => { },
@@ -268,10 +275,11 @@ public class TransactionScopeTests
         // Arrange
         var connection = new FakeDbConnection();
         connection.Open();
+        var connectionScope1 = new FakeConnectionScope(connection);
 
         // Act & Assert
         var scope1 = new TransactionScope(
-            connection,
+            connectionScope1,
             IsolationLevel.Serializable,
             _ => { },
             (_, _, _) => { },
@@ -279,8 +287,12 @@ public class TransactionScopeTests
         Assert.Equal(IsolationLevel.Serializable, scope1.IsolationLevel);
         scope1.Dispose();
 
+        var connection2 = new FakeDbConnection();
+        connection2.Open();
+        var connectionScope2 = new FakeConnectionScope(connection2);
+
         var scope2 = new TransactionScope(
-            connection,
+            connectionScope2,
             IsolationLevel.RepeatableRead,
             _ => { },
             (_, _, _) => { },
@@ -294,8 +306,9 @@ public class TransactionScopeTests
         FakeDbConnection connection,
         FakeDbTransaction transaction)
     {
+        var connectionScope = new FakeConnectionScope(connection);
         var scope = new TransactionScope(
-            connection,
+            connectionScope,
             IsolationLevel.ReadCommitted,
             _ => { },
             (_, _, _) => { },

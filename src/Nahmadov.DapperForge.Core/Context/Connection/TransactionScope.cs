@@ -6,25 +6,27 @@ namespace Nahmadov.DapperForge.Core.Context.Connection;
 
 /// <summary>
 /// Scoped database transaction that ensures proper lifecycle management with automatic rollback.
+/// Owns a connection scope and disposes it when transaction completes.
 /// </summary>
 /// <remarks>
 /// <para><b>Lifecycle:</b></para>
 /// <list type="number">
-/// <item>Transaction is created with specified isolation level</item>
+/// <item>Connection scope is created and transaction started</item>
 /// <item>Operations execute within transaction</item>
 /// <item>Complete() marks transaction as successful</item>
 /// <item>Dispose() commits if Complete() was called, otherwise rolls back</item>
+/// <item>Connection scope is disposed and connection returned to pool</item>
 /// </list>
 /// <para><b>Exception Safety:</b></para>
 /// <list type="bullet">
 /// <item>Rollback failures are logged but do not throw exceptions</item>
-/// <item>Connection is forcefully closed if rollback fails</item>
+/// <item>Connection scope is always disposed (connection returned to pool)</item>
 /// <item>Orphaned transaction prevention through aggressive cleanup</item>
 /// </list>
 /// </remarks>
 internal sealed class TransactionScope : ITransactionScope
 {
-    private readonly IDbConnection _connection;
+    private readonly IConnectionScope _connectionScope;
     private readonly Action<string> _logInformation;
     private readonly Action<Exception, string?, string> _logError;
     private readonly Action _unregisterCallback;
@@ -34,13 +36,13 @@ internal sealed class TransactionScope : ITransactionScope
     private bool _manuallyHandled;
 
     public TransactionScope(
-        IDbConnection connection,
+        IConnectionScope connectionScope,
         IsolationLevel isolationLevel,
         Action<string> logInformation,
         Action<Exception, string?, string> logError,
         Action unregisterCallback)
     {
-        _connection = connection ?? throw new ArgumentNullException(nameof(connection));
+        _connectionScope = connectionScope ?? throw new ArgumentNullException(nameof(connectionScope));
         _logInformation = logInformation ?? throw new ArgumentNullException(nameof(logInformation));
         _logError = logError ?? throw new ArgumentNullException(nameof(logError));
         _unregisterCallback = unregisterCallback ?? throw new ArgumentNullException(nameof(unregisterCallback));
@@ -49,12 +51,15 @@ internal sealed class TransactionScope : ITransactionScope
 
         try
         {
+            var connection = connectionScope.Connection;
             _transaction = connection.BeginTransaction(isolationLevel);
             _logInformation($"Transaction started with isolation level: {isolationLevel}");
         }
         catch (Exception ex)
         {
             _logError(ex, null, "Failed to begin transaction");
+            // Dispose connection scope on failure
+            connectionScope.Dispose();
             throw new DapperConnectionException($"Failed to begin transaction: {ex.Message}", ex);
         }
     }
@@ -152,6 +157,7 @@ internal sealed class TransactionScope : ITransactionScope
     /// <summary>
     /// Disposes the transaction scope.
     /// Commits if Complete() was called, otherwise rolls back.
+    /// Always disposes the connection scope to return connection to pool.
     /// </summary>
     public void Dispose()
     {
@@ -221,6 +227,18 @@ internal sealed class TransactionScope : ITransactionScope
 
             // Unregister from connection manager
             _unregisterCallback();
+
+            // Dispose connection scope (returns connection to pool)
+            try
+            {
+                _connectionScope.Dispose();
+                _logInformation("Connection scope disposed and connection returned to pool");
+            }
+            catch (Exception disposeEx)
+            {
+                _logError(disposeEx, null, "Error disposing connection scope");
+                // Swallow disposal exceptions
+            }
         }
         catch (DapperForgeException)
         {
@@ -239,6 +257,7 @@ internal sealed class TransactionScope : ITransactionScope
 
     /// <summary>
     /// Handles rollback failure by attempting aggressive cleanup.
+    /// Connection scope will be disposed anyway, ensuring connection returns to pool.
     /// </summary>
     private void HandleRollbackFailure(Exception rollbackException)
     {
@@ -247,33 +266,34 @@ internal sealed class TransactionScope : ITransactionScope
             _logError(rollbackException, null,
                 "Rollback failed - attempting aggressive cleanup to prevent orphaned transaction");
 
+            var connection = _connectionScope.Connection;
+
             // Check connection state
-            if (_connection.State == ConnectionState.Broken)
+            if (connection.State == ConnectionState.Broken)
             {
-                _logInformation("Connection is broken - closing to force transaction cleanup");
-                _connection.Close();
+                _logInformation("Connection is broken - will be disposed with scope");
                 return;
             }
 
             // Try to force close connection to cleanup transaction
-            if (_connection.State == ConnectionState.Open)
+            if (connection.State == ConnectionState.Open)
             {
                 _logInformation("Forcing connection close to cleanup failed transaction");
-                _connection.Close();
+                connection.Close();
             }
 
-            _logInformation("Aggressive cleanup completed");
+            _logInformation("Aggressive cleanup completed - connection scope will handle final disposal");
         }
         catch (Exception cleanupEx)
         {
             _logError(cleanupEx, null,
-                "Failed to perform aggressive cleanup - orphaned transaction may exist");
+                "Failed to perform aggressive cleanup - connection scope disposal will handle cleanup");
 
-            // At this point, we've done everything we can
-            // Log critical error for DBA attention
-            _logError(new InvalidOperationException("CRITICAL: Potential orphaned transaction detected"),
+            // Connection scope disposal will still happen in Dispose()
+            // This ensures connection returns to pool even if transaction is orphaned
+            _logError(new InvalidOperationException("WARNING: Transaction may be orphaned but connection will be returned to pool"),
                 null,
-                "Manual database cleanup may be required");
+                "Connection pool will handle cleanup");
         }
     }
 

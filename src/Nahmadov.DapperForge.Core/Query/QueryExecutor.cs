@@ -3,38 +3,44 @@ using System.Data;
 using Dapper;
 
 using Nahmadov.DapperForge.Core.Common;
+using Nahmadov.DapperForge.Core.Context.Connection;
 using Nahmadov.DapperForge.Core.Exceptions;
 using Nahmadov.DapperForge.Core.Interfaces;
 
 namespace Nahmadov.DapperForge.Core.Query;
 
 /// <summary>
-/// Executes database queries with retry logic, health checks, and error handling.
-/// Decouples query execution from context management.
+/// Executes database queries with retry logic, automatic connection scoping, and error handling.
+/// All database operations automatically acquire and release connections from pool.
 /// </summary>
+/// <remarks>
+/// <para><b>Connection Management:</b></para>
+/// <list type="bullet">
+/// <item>Every query automatically creates a connection scope</item>
+/// <item>Connections are immediately returned to pool after operation completes</item>
+/// <item>Transaction-aware: operations within transaction reuse transaction's connection</item>
+/// </list>
+/// </remarks>
 internal sealed class QueryExecutor : IQueryExecutor
 {
-    private readonly IDbConnection _connection;
+    private readonly IInternalConnectionManager _connectionManager;
     private readonly DapperDbContextOptions _options;
     private readonly Action<string> _logSql;
     private readonly Action<string> _logInfo;
     private readonly Action<Exception, string?, string> _logError;
-    private readonly Func<Task> _ensureHealthyAsync;
 
     public QueryExecutor(
-        IDbConnection connection,
+        IInternalConnectionManager connectionManager,
         DapperDbContextOptions options,
         Action<string> logSql,
         Action<string> logInfo,
-        Action<Exception, string?, string> logError,
-        Func<Task> ensureHealthyAsync)
+        Action<Exception, string?, string> logError)
     {
-        _connection = connection ?? throw new ArgumentNullException(nameof(connection));
+        _connectionManager = connectionManager ?? throw new ArgumentNullException(nameof(connectionManager));
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _logSql = logSql ?? throw new ArgumentNullException(nameof(logSql));
         _logInfo = logInfo ?? throw new ArgumentNullException(nameof(logInfo));
         _logError = logError ?? throw new ArgumentNullException(nameof(logError));
-        _ensureHealthyAsync = ensureHealthyAsync ?? throw new ArgumentNullException(nameof(ensureHealthyAsync));
     }
 
     public Task<IEnumerable<T>> QueryAsync<T>(string sql, object? param = null, IDbTransaction? transaction = null)
@@ -42,12 +48,11 @@ internal sealed class QueryExecutor : IQueryExecutor
         _logSql(sql);
         return ExecuteWithRetryAsync(async () =>
         {
-            if (_options.EnableConnectionHealthCheck && transaction is null)
-                await _ensureHealthyAsync().ConfigureAwait(false);
-
-            var connection = transaction?.Connection ?? _connection;
-            var timeout = _options.CommandTimeoutSeconds;
-            return await connection.QueryAsync<T>(sql, param, transaction, commandTimeout: timeout).ConfigureAwait(false);
+            return await _connectionManager.ExecuteWithConnectionAsync(async connection =>
+            {
+                var timeout = _options.CommandTimeoutSeconds;
+                return await connection.QueryAsync<T>(sql, param, transaction, commandTimeout: timeout).ConfigureAwait(false);
+            }, transaction).ConfigureAwait(false);
         });
     }
 
@@ -56,12 +61,11 @@ internal sealed class QueryExecutor : IQueryExecutor
         _logSql(sql);
         return ExecuteWithRetryAsync(async () =>
         {
-            if (_options.EnableConnectionHealthCheck && transaction is null)
-                await _ensureHealthyAsync().ConfigureAwait(false);
-
-            var connection = transaction?.Connection ?? _connection;
-            var timeout = _options.CommandTimeoutSeconds;
-            return await connection.QueryFirstOrDefaultAsync<T>(sql, param, transaction, commandTimeout: timeout).ConfigureAwait(false);
+            return await _connectionManager.ExecuteWithConnectionAsync(async connection =>
+            {
+                var timeout = _options.CommandTimeoutSeconds;
+                return await connection.QueryFirstOrDefaultAsync<T>(sql, param, transaction, commandTimeout: timeout).ConfigureAwait(false);
+            }, transaction).ConfigureAwait(false);
         });
     }
 
@@ -70,14 +74,12 @@ internal sealed class QueryExecutor : IQueryExecutor
         _logSql(sql);
         return ExecuteWithRetryAsync(async () =>
         {
-            if (_options.EnableConnectionHealthCheck && transaction is null)
-                await _ensureHealthyAsync().ConfigureAwait(false);
-
-            var connection = transaction?.Connection ?? _connection;
-            var timeout = _options.CommandTimeoutSeconds;
-
-            var results = await connection.QueryAsync(entityType, sql, param, transaction, commandTimeout: timeout).ConfigureAwait(false);
-            return results.Cast<object>();
+            return await _connectionManager.ExecuteWithConnectionAsync(async connection =>
+            {
+                var timeout = _options.CommandTimeoutSeconds;
+                var results = await connection.QueryAsync(entityType, sql, param, transaction, commandTimeout: timeout).ConfigureAwait(false);
+                return results.Cast<object>();
+            }, transaction).ConfigureAwait(false);
         });
     }
 
@@ -92,18 +94,18 @@ internal sealed class QueryExecutor : IQueryExecutor
         _logSql(sql);
         return ExecuteWithRetryAsync(async () =>
         {
-            if (_options.EnableConnectionHealthCheck && transaction is null)
-                await _ensureHealthyAsync().ConfigureAwait(false);
-
-            var connection = transaction?.Connection ?? _connection;
-            var timeout = _options.CommandTimeoutSeconds;
-            var results = await connection.QueryAsync(sql, types, objs => map(objs), param: parameters, transaction: transaction, splitOn: splitOn, commandTimeout: timeout).ConfigureAwait(false);
-            return results.ToList();
+            return await _connectionManager.ExecuteWithConnectionAsync(async connection =>
+            {
+                var timeout = _options.CommandTimeoutSeconds;
+                var results = await connection.QueryAsync(sql, types, objs => map(objs), param: parameters, transaction: transaction, splitOn: splitOn, commandTimeout: timeout).ConfigureAwait(false);
+                return results.ToList();
+            }, transaction).ConfigureAwait(false);
         });
     }
 
     /// <summary>
     /// Executes a command (INSERT/UPDATE/DELETE) without retry logic.
+    /// Uses automatic connection scoping for safe pool management.
     /// </summary>
     /// <remarks>
     /// <para><b>Why No Retry for Mutations:</b></para>
@@ -125,12 +127,11 @@ internal sealed class QueryExecutor : IQueryExecutor
         _logSql(sql);
 
         // No retry for mutations - they are NOT idempotent
-        if (_options.EnableConnectionHealthCheck && transaction is null)
-            await _ensureHealthyAsync().ConfigureAwait(false);
-
-        var connection = transaction?.Connection ?? _connection;
-        var timeout = _options.CommandTimeoutSeconds;
-        return await connection.ExecuteAsync(sql, param, transaction, commandTimeout: timeout).ConfigureAwait(false);
+        return await _connectionManager.ExecuteWithConnectionAsync(async connection =>
+        {
+            var timeout = _options.CommandTimeoutSeconds;
+            return await connection.ExecuteAsync(sql, param, transaction, commandTimeout: timeout).ConfigureAwait(false);
+        }, transaction).ConfigureAwait(false);
     }
 
     /// <summary>
