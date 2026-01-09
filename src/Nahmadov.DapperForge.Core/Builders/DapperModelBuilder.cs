@@ -95,6 +95,43 @@ public class DapperModelBuilder(ISqlDialect dialect, string? defaultSchema = nul
     }
 
     /// <summary>
+    /// Applies all entity type configurations from the specified assembly.
+    /// </summary>
+    /// <param name="assembly">The assembly to scan for configuration types.</param>
+    /// <param name="predicate">Optional predicate to filter which configuration types to apply.</param>
+    public void ApplyConfigurationsFromAssembly(Assembly assembly, Func<Type, bool>? predicate = null)
+    {
+        ArgumentNullException.ThrowIfNull(assembly);
+
+        var configurationTypes = assembly
+            .GetTypes()
+            .Where(t => !t.IsAbstract && !t.IsGenericTypeDefinition)
+            .Where(t => t.GetInterfaces().Any(i =>
+                i.IsGenericType &&
+                i.GetGenericTypeDefinition() == typeof(IEntityTypeConfiguration<>)))
+            .Where(t => predicate == null || predicate(t));
+
+        foreach (var configurationType in configurationTypes)
+        {
+            var instance = Activator.CreateInstance(configurationType);
+            if (instance == null)
+                continue;
+
+            var entityType = configurationType
+                .GetInterfaces()
+                .First(i => i.IsGenericType &&
+                           i.GetGenericTypeDefinition() == typeof(IEntityTypeConfiguration<>))
+                .GetGenericArguments()[0];
+
+            var applyMethod = typeof(DapperModelBuilder)
+                .GetMethod(nameof(ApplyConfiguration))!
+                .MakeGenericMethod(entityType);
+
+            applyMethod.Invoke(this, [instance]);
+        }
+    }
+
+    /// <summary>
     /// Builds immutable entity mappings based on the collected configurations and attributes.
     /// </summary>
     /// <returns>A read-only dictionary of entity mappings keyed by CLR type.</returns>
