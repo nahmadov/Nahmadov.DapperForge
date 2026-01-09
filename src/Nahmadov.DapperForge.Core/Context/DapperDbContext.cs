@@ -33,7 +33,6 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
     /// <summary>
     /// Initializes a new instance of <see cref="DapperDbContext"/> with the specified options.
     /// </summary>
-    /// <param name="options">Configuration options for the context.</param>
     protected DapperDbContext(DapperDbContextOptions options)
     {
         _options = options ?? throw new ArgumentNullException(nameof(options));
@@ -58,9 +57,6 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
         _sqlGeneratorProvider = new SqlGeneratorProvider(_options.Dialect!, _modelManager);
     }
 
-    /// <summary>
-    /// Detects if context is being used as a singleton (anti-pattern).
-    /// </summary>
     private void DetectSingletonAntiPattern()
     {
         var contextType = GetType();
@@ -87,9 +83,6 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
         }
     }
 
-    /// <summary>
-    /// Gets the query executor instance for executing database operations with retry logic.
-    /// </summary>
     private IQueryExecutor QueryExecutor
     {
         get
@@ -107,20 +100,6 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
         }
     }
 
-    /// <summary>
-    /// Gets an open database connection, creating one if necessary.
-    /// </summary>
-    /// <remarks>
-    /// <para><b>⚠️ DEPRECATED:</b> Direct connection access is discouraged.</para>
-    /// <para>
-    /// This property is maintained for backward compatibility but should be avoided in new code.
-    /// All query methods now use automatic connection scoping internally.
-    /// </para>
-    /// <para>
-    /// If you need explicit connection control, use <see cref="CreateConnectionScope"/> instead.
-    /// </para>
-    /// </remarks>
-    /// <exception cref="DapperConnectionException">Thrown when connection cannot be established.</exception>
     [Obsolete("Direct connection access is deprecated. Use QueryAsync/ExecuteAsync methods instead, which handle connection lifecycle automatically. For explicit control, use CreateConnectionScope().", false)]
     protected IDbConnection Connection
     {
@@ -140,10 +119,6 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
     /// <summary>
     /// Executes a query and returns all matching rows.
     /// </summary>
-    /// <typeparam name="T">Type to map results to.</typeparam>
-    /// <param name="sql">SQL to execute.</param>
-    /// <param name="param">Optional parameters.</param>
-    /// <param name="transaction">Optional transaction.</param>
     public Task<IEnumerable<T>> QueryAsync<T>(string sql, object? param = null, IDbTransaction? transaction = null)
     {
         return QueryExecutor.QueryAsync<T>(sql, param, transaction);
@@ -152,10 +127,6 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
     /// <summary>
     /// Executes a query and returns the first row or default.
     /// </summary>
-    /// <typeparam name="T">Type to map results to.</typeparam>
-    /// <param name="sql">SQL to execute.</param>
-    /// <param name="param">Optional parameters.</param>
-    /// <param name="transaction">Optional transaction.</param>
     public Task<T?> QueryFirstOrDefaultAsync<T>(string sql, object? param = null, IDbTransaction? transaction = null)
     {
         return QueryExecutor.QueryFirstOrDefaultAsync<T>(sql, param, transaction);
@@ -169,9 +140,6 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
     /// <summary>
     /// Executes a non-query command and returns affected row count.
     /// </summary>
-    /// <param name="sql">SQL to execute.</param>
-    /// <param name="param">Optional parameters.</param>
-    /// <param name="transaction">Optional transaction.</param>
     public Task<int> ExecuteAsync(string sql, object? param = null, IDbTransaction? transaction = null)
     {
         return QueryExecutor.ExecuteAsync(sql, param, transaction);
@@ -180,60 +148,17 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
     /// <summary>
     /// Creates a new connection scope for explicit connection lifecycle management.
     /// </summary>
-    /// <returns>A connection scope that should be disposed when operations are complete.</returns>
-    /// <remarks>
-    /// <para><b>Recommended Usage:</b></para>
-    /// <code>
-    /// // Good: Connection returned to pool after use
-    /// using var scope = context.CreateConnectionScope();
-    /// var users = await context.QueryAsync&lt;User&gt;("SELECT * FROM Users", connection: scope.Connection);
-    /// // scope.Dispose() returns connection to pool
-    ///
-    /// // Alternative: Legacy mode (connection stays open)
-    /// var users = await context.QueryAsync&lt;User&gt;("SELECT * FROM Users");
-    /// // Connection stays open until context disposal
-    /// </code>
-    /// <para><b>Benefits:</b></para>
-    /// <list type="bullet">
-    /// <item>Prevents connection pool exhaustion in high-traffic scenarios</item>
-    /// <item>Connections returned to pool immediately after scope disposal</item>
-    /// <item>Better resource utilization</item>
-    /// </list>
-    /// </remarks>
     public IConnectionScope CreateConnectionScope()
     {
         return _connectionManager.CreateConnectionScope();
     }
 
-    /// <summary>
-    /// Begins a new transaction on the underlying connection with default isolation level (ReadCommitted).
-    /// </summary>
-    /// <returns>A database transaction.</returns>
-    /// <remarks>
-    /// <para><b>⚠️ DEPRECATED:</b> Use <see cref="BeginTransactionScopeAsync()"/> instead.</para>
-    /// <para>
-    /// This method is maintained for backward compatibility but should be avoided in new code.
-    /// TransactionScope provides better resource management with automatic connection disposal.
-    /// </para>
-    /// </remarks>
     [Obsolete("Use BeginTransactionScopeAsync() instead for better resource management.", false)]
     public async Task<IDbTransaction> BeginTransactionAsync()
     {
         return await BeginTransactionAsync(IsolationLevel.ReadCommitted).ConfigureAwait(false);
     }
 
-    /// <summary>
-    /// Begins a new transaction on the underlying connection with specified isolation level.
-    /// </summary>
-    /// <param name="isolationLevel">The isolation level for the transaction.</param>
-    /// <returns>A database transaction.</returns>
-    /// <remarks>
-    /// <para><b>⚠️ DEPRECATED:</b> Use <see cref="BeginTransactionScopeAsync(IsolationLevel)"/> instead.</para>
-    /// <para>
-    /// This method is maintained for backward compatibility but should be avoided in new code.
-    /// TransactionScope provides better resource management with automatic connection disposal.
-    /// </para>
-    /// </remarks>
     [Obsolete("Use BeginTransactionScopeAsync(isolationLevel) instead for better resource management.", false)]
     public async Task<IDbTransaction> BeginTransactionAsync(IsolationLevel isolationLevel)
     {
@@ -245,13 +170,6 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
         return scope.Transaction;
     }
 
-    /// <summary>
-    /// Commits a transaction and unregisters it from tracking.
-    /// </summary>
-    /// <param name="transaction">The transaction to commit.</param>
-    /// <remarks>
-    /// <para><b>⚠️ DEPRECATED:</b> Use <see cref="ITransactionScope.Complete"/> instead.</para>
-    /// </remarks>
     [Obsolete("Use TransactionScope.Complete() instead when using BeginTransactionScopeAsync().", false)]
     public void CommitTransaction(IDbTransaction transaction)
     {
@@ -269,13 +187,6 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
         }
     }
 
-    /// <summary>
-    /// Rolls back a transaction and unregisters it from tracking.
-    /// </summary>
-    /// <param name="transaction">The transaction to rollback.</param>
-    /// <remarks>
-    /// <para><b>⚠️ DEPRECATED:</b> Use <see cref="ITransactionScope.Rollback"/> instead.</para>
-    /// </remarks>
     [Obsolete("Use TransactionScope.Rollback() instead when using BeginTransactionScopeAsync().", false)]
     public void RollbackTransaction(IDbTransaction transaction)
     {
@@ -293,75 +204,27 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
         }
     }
 
-    /// <summary>
-    /// Gets whether there is an active transaction.
-    /// </summary>
     public bool HasActiveTransaction => _connectionManager.HasActiveTransaction;
 
     /// <summary>
-    /// Begins a new transaction scope with default isolation level (ReadCommitted).
-    /// Connection is automatically managed and returned to pool when scope is disposed.
+    /// Begins a new transaction scope with automatic connection management and commit/rollback handling.
     /// </summary>
-    /// <returns>A transaction scope that manages commit/rollback automatically.</returns>
-    /// <remarks>
-    /// <para><b>Recommended Pattern (✅):</b></para>
-    /// <code>
-    /// using var txScope = await context.BeginTransactionScopeAsync();
-    /// try
-    /// {
-    ///     await context.ExecuteAsync("UPDATE ...", transaction: txScope.Transaction);
-    ///     txScope.Complete(); // Mark as successful
-    /// }
-    /// // Dispose: Commits if Complete() was called, otherwise rolls back
-    /// // Connection automatically returned to pool
-    /// </code>
-    /// <para><b>Benefits:</b></para>
-    /// <list type="bullet">
-    /// <item>Automatic connection scoping (no pool exhaustion)</item>
-    /// <item>Automatic rollback if Complete() not called (exception safety)</item>
-    /// <item>Connection immediately returned to pool after transaction</item>
-    /// <item>Prevents orphaned transactions</item>
-    /// <item>Graceful handling of rollback failures</item>
-    /// </list>
-    /// </remarks>
     public Task<ITransactionScope> BeginTransactionScopeAsync()
     {
         return BeginTransactionScopeAsync(IsolationLevel.ReadCommitted);
     }
 
     /// <summary>
-    /// Begins a new transaction scope with specified isolation level.
-    /// Connection is automatically managed and returned to pool when scope is disposed.
+    /// Begins a new transaction scope with automatic connection management and commit/rollback handling.
     /// </summary>
-    /// <param name="isolationLevel">The isolation level for the transaction.</param>
-    /// <returns>A transaction scope that manages commit/rollback automatically.</returns>
-    /// <remarks>
-    /// <para><b>Transaction Scope Pattern:</b></para>
-    /// <para>
-    /// The scope ensures proper transaction lifecycle:
-    /// - Connection scope is created automatically
-    /// - Transaction starts on scoped connection
-    /// - Complete() marks transaction as successful
-    /// - Dispose() commits if Complete() was called, otherwise rolls back
-    /// - Connection scope is disposed and connection returned to pool
-    /// - Rollback failures are handled gracefully to prevent orphaned transactions
-    /// </para>
-    /// </remarks>
     public Task<ITransactionScope> BeginTransactionScopeAsync(IsolationLevel isolationLevel)
     {
         return _connectionManager.BeginTransactionScopeAsync(isolationLevel);
     }
 
     /// <summary>
-    /// Executes a query with dynamic type resolution (non-generic).
-    /// Used internally to avoid reflection overhead in Include operations.
-    /// Performance: ~1200x faster than reflection-based generic method invocation.
+    /// Executes a query with dynamic type resolution for internal use in Include operations.
     /// </summary>
-    /// <param name="entityType">The entity type to query for.</param>
-    /// <param name="sql">SQL to execute.</param>
-    /// <param name="param">Optional parameters.</param>
-    /// <param name="transaction">Optional transaction.</param>
-    /// <returns>Results as IEnumerable of objects.</returns>
     public Task<IEnumerable<object>> QueryDynamicAsync(Type entityType, string sql, object? param = null, IDbTransaction? transaction = null)
     {
         return QueryExecutor.QueryDynamicAsync(entityType, sql, param, transaction);
@@ -369,35 +232,15 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
 
     /// <summary>
     /// Performs a health check on the database connection pool.
-    /// Creates a test connection to verify pool health.
     /// </summary>
-    /// <returns>True if connection pool is healthy, otherwise throws exception.</returns>
-    /// <exception cref="DapperConnectionException">Thrown when health check fails.</exception>
     public async Task<bool> HealthCheckAsync()
         => await _connectionManager.HealthCheckAsync().ConfigureAwait(false);
 
     #endregion
 
     /// <summary>
-    /// Gets a <see cref="DapperSet{TEntity}"/> for querying and saving instances of the given type.
+    /// Gets a set for querying and saving instances of the specified entity type.
     /// </summary>
-    /// <typeparam name="TEntity">Entity type.</typeparam>
-    /// <returns>A set for the entity type.</returns>
-    /// <remarks>
-    /// <para><b>Memory Management:</b></para>
-    /// <para>
-    /// DapperSet instances are cached per entity type for the lifetime of the context.
-    /// This is efficient for scoped contexts (per-request), but can cause memory issues
-    /// if the context is registered as a singleton.
-    /// </para>
-    /// <para><b>Best Practices:</b></para>
-    /// <list type="bullet">
-    /// <item>✅ Use SCOPED lifetime in DI container (recommended)</item>
-    /// <item>✅ Dispose context after each unit of work</item>
-    /// <item>❌ Avoid SINGLETON context lifetime (causes unbounded memory growth)</item>
-    /// <item>❌ Avoid TRANSIENT lifetime (too many connection instances)</item>
-    /// </list>
-    /// </remarks>
     public DapperSet<TEntity> Set<TEntity>() where TEntity : class
     {
         _modelManager.EnsureModelBuilt();
@@ -431,26 +274,13 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
     /// <summary>
     /// Allows derived contexts to configure entity mappings.
     /// </summary>
-    /// <param name="modelBuilder">Model builder to configure.</param>
     protected virtual void OnModelCreating(DapperModelBuilder modelBuilder) { }
 
-    /// <summary>
-    /// Retrieves the mapping for a given entity type, building the model if necessary.
-    /// </summary>
-    /// <typeparam name="TEntity">Entity type.</typeparam>
-    /// <returns>Entity mapping metadata.</returns>
-    /// <exception cref="DapperConfigurationException">Thrown when entity is not registered or mapping not found.</exception>
     internal EntityMapping GetEntityMapping<TEntity>() where TEntity : class
     {
         return _modelManager.GetEntityMapping<TEntity>();
     }
 
-    /// <summary>
-    /// Retrieves the mapping for a given entity type, building the model if necessary.
-    /// </summary>
-    /// <param name="entityType">Entity type.</param>
-    /// <returns>Entity mapping metadata.</returns>
-    /// <exception cref="DapperConfigurationException">Thrown when entity is not registered or mapping not found.</exception>
     internal EntityMapping GetEntityMapping(Type entityType)
     {
         return _modelManager.GetEntityMapping(entityType);
@@ -461,9 +291,6 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
         return _sqlGeneratorProvider.GetGenerator(entityType);
     }
 
-    /// <summary>
-    /// Helper: reads SelectAllSql from SqlGenerator&lt;T&gt; instance.
-    /// </summary>
     internal static string GetSelectAllSqlFromGenerator(object generator)
     {
         var prop = generator.GetType().GetProperty("SelectAllSql", BindingFlags.Public | BindingFlags.Instance)
@@ -475,19 +302,12 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
                 $"SelectAllSql is null on '{generator.GetType().Name}'. This is an internal error."));
     }
 
-    /// <summary>
-    /// Disposes the context and its underlying connection.
-    /// </summary>
     public void Dispose()
     {
         Dispose(true);
         GC.SuppressFinalize(this);
     }
 
-    /// <summary>
-    /// Performs the actual disposal logic.
-    /// </summary>
-    /// <param name="disposing">True when called from <see cref="Dispose()"/>.</param>
     protected virtual void Dispose(bool disposing)
     {
         if (_disposed) return;
@@ -504,11 +324,6 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
         _disposed = true;
     }
 
-    /// <summary>
-    /// Logs executed SQL using configured logger or console fallback.
-    /// Supports structured logging when ILogger is configured.
-    /// </summary>
-    /// <param name="sql">SQL text to log.</param>
     private void LogSql(string sql)
     {
         if (string.IsNullOrWhiteSpace(sql))
@@ -528,12 +343,6 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
         }
     }
 
-    /// <summary>
-    /// Logs an error during database operations.
-    /// </summary>
-    /// <param name="exception">The exception that occurred.</param>
-    /// <param name="sql">SQL that caused the error.</param>
-    /// <param name="message">Additional context message.</param>
     private void LogError(Exception exception, string? sql, string message)
     {
         if (_options.Logger != null)
@@ -542,10 +351,6 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
         }
     }
 
-    /// <summary>
-    /// Logs connection-related events.
-    /// </summary>
-    /// <param name="message">Log message.</param>
     private void LogInformation(string message)
     {
         _options.Logger?.LogInformation("{Message}", message);

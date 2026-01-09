@@ -10,6 +10,5 @@ public interface IEntityTypeConfiguration<TEntity>
     /// <summary>
     /// Applies configuration to the provided entity builder.
     /// </summary>
-    /// <param name="builder">Builder used to configure the entity type.</param>
     void Configure(EntityTypeBuilder<TEntity> builder);
 }
