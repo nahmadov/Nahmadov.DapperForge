@@ -8,6 +8,7 @@ namespace Nahmadov.DapperForge.Core.Builders;
 /// Fluent builder for configuring entity mappings.
 /// </summary>
 public class EntityTypeBuilder<TEntity>(EntityConfig entity) : IEntityTypeBuilder
+    where TEntity : class
 {
     private readonly EntityConfig _entity = entity;
 
@@ -122,11 +123,49 @@ public class EntityTypeBuilder<TEntity>(EntityConfig entity) : IEntityTypeBuilde
     }
 
     /// <summary>
+    /// Configures a reference navigation to a related entity (one-to-one or many-to-one from dependent side).
+    /// </summary>
+    /// <typeparam name="TRelated">The principal entity type.</typeparam>
+    /// <param name="navigationExpression">Expression selecting the navigation property.</param>
+    /// <returns>A builder to further configure the relationship.</returns>
+    public ReferenceNavigationBuilder<TEntity, TRelated> HasOne<TRelated>(
+        Expression<Func<TEntity, TRelated?>> navigationExpression)
+        where TRelated : class
+    {
+        var navigationName = GetPropertyName(navigationExpression);
+        return new ReferenceNavigationBuilder<TEntity, TRelated>(_entity, navigationName);
+    }
+
+    /// <summary>
+    /// Configures a collection navigation to related entities (one-to-many from principal side).
+    /// </summary>
+    /// <typeparam name="TRelated">The dependent entity type.</typeparam>
+    /// <param name="navigationExpression">Expression selecting the collection navigation property.</param>
+    /// <returns>A builder to further configure the relationship.</returns>
+    public CollectionNavigationBuilder<TEntity, TRelated> HasMany<TRelated>(
+        Expression<Func<TEntity, IEnumerable<TRelated>?>> navigationExpression)
+        where TRelated : class
+    {
+        var navigationName = GetPropertyName(navigationExpression);
+        return new CollectionNavigationBuilder<TEntity, TRelated>(_entity, navigationName);
+    }
+
+    /// <summary>
     /// Extracts the property name from a simple member access expression.
     /// </summary>
     /// <param name="expr">Expression pointing to a property.</param>
     /// <returns>Property name.</returns>
     private static string GetPropertyName(Expression<Func<TEntity, object?>> expr)
+    {
+        if (expr.Body is MemberExpression m)
+            return m.Member.Name;
+        if (expr.Body is UnaryExpression u && u.Operand is MemberExpression m2)
+            return m2.Member.Name;
+
+        throw new InvalidOperationException("Only simple property expressions are supported.");
+    }
+
+    private static string GetPropertyName<TProperty>(Expression<Func<TEntity, TProperty>> expr)
     {
         if (expr.Body is MemberExpression m)
             return m.Member.Name;

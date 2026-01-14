@@ -29,7 +29,7 @@ internal static class EntityMappingResolver
         var keyProps = ResolveKeyProperties(config, snapshot, props);
         var alternateKeyProps = ResolveAlternateKeyProperties(config, props);
         var propertyMappings = BuildPropertyMappings(config, snapshot, keyProps);
-        var foreignKeys = BuildForeignKeyMappings(snapshot, propertyMappings);
+        var foreignKeys = BuildForeignKeyMappings(snapshot, config, propertyMappings);
 
         var isReadOnly = config.IsReadOnly || snapshot.IsReadOnly;
 
@@ -151,16 +151,70 @@ internal static class EntityMappingResolver
 
     private static IReadOnlyList<ForeignKeyMapping> BuildForeignKeyMappings(
         EntityMetadataSnapshot snapshot,
+        EntityConfig config,
         IReadOnlyCollection<PropertyMapping> propertyMappings)
     {
-        if (snapshot.ForeignKeyAttributes.Count == 0)
-            return Array.Empty<ForeignKeyMapping>();
-
         var foreignKeys = new List<ForeignKeyMapping>();
+        var processedNavigations = new HashSet<string>(StringComparer.Ordinal);
 
+        // 1. First, process fluent configurations (they take precedence)
+        foreach (var rel in config.Relationships)
+        {
+            // Only process HasOne relationships (reference navigations on dependent side)
+            if (!rel.IsReferenceNavigation)
+                continue;
+
+            var navProp = snapshot.AllProperties.FirstOrDefault(p =>
+                string.Equals(p.Name, rel.NavigationPropertyName, StringComparison.Ordinal))
+                ?? throw new InvalidOperationException(
+                    $"Navigation property '{rel.NavigationPropertyName}' not found on entity '{snapshot.EntityType.Name}'.");
+
+            // FK property is required for fluent config
+            if (string.IsNullOrEmpty(rel.ForeignKeyPropertyName))
+                throw new InvalidOperationException(
+                    $"Foreign key property must be specified for relationship '{rel.NavigationPropertyName}' on entity '{snapshot.EntityType.Name}'. Use HasForeignKey() to specify the foreign key property.");
+
+            var fkProp = snapshot.ScalarProperties.FirstOrDefault(p =>
+                string.Equals(p.Name, rel.ForeignKeyPropertyName, StringComparison.Ordinal))
+                ?? throw new InvalidOperationException(
+                    $"Foreign key property '{rel.ForeignKeyPropertyName}' not found on entity '{snapshot.EntityType.Name}'.");
+
+            var fkColumnMapping = propertyMappings.FirstOrDefault(pm => pm.Property == fkProp)
+                ?? throw new InvalidOperationException($"Property '{fkProp.Name}' has no column mapping.");
+
+            var principalType = rel.PrincipalEntityType;
+            var principalKeyPropName = rel.PrincipalKeyPropertyName ?? "Id";
+            var principalTableAttr = principalType.GetCustomAttribute<TableAttribute>();
+            var principalTableName = principalTableAttr?.Name ?? principalType.Name;
+            var principalSchema = principalTableAttr?.Schema;
+
+            var principalKeyProp = principalType.GetProperties(BindingFlags.Instance | BindingFlags.Public)
+                .FirstOrDefault(p => string.Equals(p.Name, principalKeyPropName, StringComparison.Ordinal))
+                ?? throw new InvalidOperationException(
+                    $"Key property '{principalKeyPropName}' not found on entity '{principalType.Name}'.");
+
+            var principalColumnAttr = principalKeyProp.GetCustomAttribute<ColumnAttribute>();
+            var principalColumnName = principalColumnAttr?.Name ?? principalKeyPropName;
+
+            foreignKeys.Add(new ForeignKeyMapping(
+                navProp,
+                fkProp,
+                principalType,
+                fkColumnMapping.ColumnName,
+                principalColumnName,
+                principalTableName,
+                principalSchema));
+
+            processedNavigations.Add(rel.NavigationPropertyName);
+        }
+
+        // 2. Then, process attribute-based configurations (only if not already configured via fluent)
         foreach (var (fkProp, fkAttr) in snapshot.ForeignKeyAttributes)
         {
-            // Find navigation property
+            // Skip if already configured via fluent API
+            if (processedNavigations.Contains(fkAttr.NavigationPropertyName))
+                continue;
+
             var navProp = snapshot.AllProperties.FirstOrDefault(p =>
                 string.Equals(p.Name, fkAttr.NavigationPropertyName, StringComparison.Ordinal))
                 ?? throw new InvalidOperationException(

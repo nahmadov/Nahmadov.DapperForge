@@ -113,9 +113,9 @@ public class SampleRunner(AppDapperDbContext db)
         var firstAda = await _db.Customers.FirstOrDefaultAsync(c => c.Name == "Ada Lovelace", ignoreCase: true);
         Console.WriteLine($"FirstOrDefault for Ada Lovelace: {(firstAda is null ? "not found" : $"found id {firstAda.Id}")}");
 
-        var idList = active.Select(c => c.Id).Take(2).ToArray();
-        var inList = await _db.Customers.WhereAsync(c => idList.Contains(c.Id));
-        Console.WriteLine($"Customers with ids IN ({string.Join(", ", idList)}): {inList.Count()}");
+        // var idList = active.Select(c => c.Id).Take(2).ToArray();
+        // var inList = await _db.Customers.WhereAsync(c => idList.Contains(c.Id));
+        // Console.WriteLine($"Customers with ids IN ({string.Join(", ", idList)}): {inList.Count()}");
     }
 
     private async Task RunCrudExamplesAsync(int customerId, int ticketId)

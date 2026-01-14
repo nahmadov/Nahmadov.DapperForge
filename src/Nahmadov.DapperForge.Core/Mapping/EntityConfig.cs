@@ -13,6 +13,7 @@ public class EntityConfig(Type clrType)
     public List<string> KeyProperties { get; } = new();
     public List<string> AlternateKeyProperties { get; } = new();
     public Dictionary<string, PropertyConfig> Properties { get; } = [];
+    public List<RelationshipConfig> Relationships { get; } = new();
 
     /// <summary>
     /// Configures the table name and optional schema for the entity.

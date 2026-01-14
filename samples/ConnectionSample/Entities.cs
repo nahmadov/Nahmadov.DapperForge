@@ -30,7 +30,7 @@ public class SupportTicket
     [Key]
     public int TicketId { get; set; }
 
-    [Nahmadov.DapperForge.Core.Attributes.ForeignKey(nameof(Customer), typeof(Customer), nameof(Customer.Id))]
+    // Foreign key configured via fluent API in AppDapperDbContext.OnModelCreating
     public int CustomerId { get; set; }
 
     [Required, MaxLength(200)]

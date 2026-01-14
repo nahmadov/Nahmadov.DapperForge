@@ -26,6 +26,11 @@ public class AppDapperDbContext(DapperDbContextOptions<AppDapperDbContext> optio
             b.Property(t => t.Title).HasMaxLength(200).IsRequired();
             b.Property(t => t.Description).HasMaxLength(500);
             b.Property(t => t.Status).HasMaxLength(50).IsRequired();
+
+            // Configure foreign key relationship using fluent API
+            b.HasOne<Customer>(t => t.Customer)
+             .WithMany(c => c.SupportTickets)
+             .HasForeignKey(t => t.CustomerId);
         });
 
         modelBuilder.Entity<AuditLog>(b =>

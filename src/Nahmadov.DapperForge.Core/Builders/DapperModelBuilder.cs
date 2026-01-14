@@ -24,6 +24,7 @@ public class DapperModelBuilder(ISqlDialect dialect, string? defaultSchema = nul
     /// Starts configuration for an entity type.
     /// </summary>
     public EntityTypeBuilder<TEntity> Entity<TEntity>()
+        where TEntity : class
     {
         var config = GetOrCreateConfig(typeof(TEntity));
         return new EntityTypeBuilder<TEntity>(config);
@@ -33,6 +34,7 @@ public class DapperModelBuilder(ISqlDialect dialect, string? defaultSchema = nul
     /// Configures an entity type using the provided callback.
     /// </summary>
     public EntityTypeBuilder<TEntity> Entity<TEntity>(Action<EntityTypeBuilder<TEntity>> configure)
+        where TEntity : class
     {
         ArgumentNullException.ThrowIfNull(configure);
 
@@ -69,6 +71,7 @@ public class DapperModelBuilder(ISqlDialect dialect, string? defaultSchema = nul
     /// Applies a reusable configuration instance to the corresponding entity type.
     /// </summary>
     public void ApplyConfiguration<TEntity>(IEntityTypeConfiguration<TEntity> configuration)
+        where TEntity : class
     {
         ArgumentNullException.ThrowIfNull(configuration);
 
