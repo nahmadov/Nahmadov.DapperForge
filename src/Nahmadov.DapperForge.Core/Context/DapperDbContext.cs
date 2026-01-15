@@ -29,6 +29,8 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
     private IQueryExecutor? _queryExecutor;
     private static readonly ConcurrentDictionary<Type, int> _contextInstanceCounts = new();
     private readonly Guid _instanceId = Guid.NewGuid();
+    private readonly object _legacyConnectionLock = new();
+    private IConnectionScope? _legacyConnectionScope;
 
     /// <summary>
     /// Initializes a new instance of <see cref="DapperDbContext"/> with the specified options.
@@ -108,9 +110,14 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
             // For backward compatibility, create a scope and return connection
             // This is not ideal but prevents breaking existing code
             LogWarning("Direct Connection property access is deprecated. Consider using automatic scoping instead.");
+            if (_disposed)
+                throw new ObjectDisposedException(nameof(DapperDbContext));
 
-            var scope = _connectionManager.CreateConnectionScope();
-            return scope.Connection;
+            lock (_legacyConnectionLock)
+            {
+                _legacyConnectionScope ??= _connectionManager.CreateConnectionScope();
+                return _legacyConnectionScope.Connection;
+            }
         }
     }
 
@@ -167,7 +174,7 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
         // For backward compatibility, create transaction scope and return transaction
         // This is not ideal but prevents breaking existing code
         var scope = await _connectionManager.BeginTransactionScopeAsync(isolationLevel).ConfigureAwait(false);
-        return scope.Transaction;
+        return new LegacyTransactionWrapper(scope);
     }
 
     [Obsolete("Use TransactionScope.Complete() instead when using BeginTransactionScopeAsync().", false)]
@@ -315,6 +322,11 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
         if (disposing)
         {
             _connectionManager.Dispose();
+            lock (_legacyConnectionLock)
+            {
+                _legacyConnectionScope?.Dispose();
+                _legacyConnectionScope = null;
+            }
 
             // Decrement instance count for singleton detection
             var contextType = GetType();
@@ -359,5 +371,41 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
     private void LogWarning(string message)
     {
         _options.Logger?.LogWarning("{Message}", message);
+    }
+
+    private sealed class LegacyTransactionWrapper : IDbTransaction
+    {
+        private readonly ITransactionScope _scope;
+        private bool _disposed;
+
+        public LegacyTransactionWrapper(ITransactionScope scope)
+        {
+            _scope = scope ?? throw new ArgumentNullException(nameof(scope));
+        }
+
+        public IDbConnection Connection => _scope.Transaction.Connection!;
+
+        public IsolationLevel IsolationLevel => _scope.IsolationLevel;
+
+        public void Commit()
+        {
+            _scope.Commit();
+            Dispose();
+        }
+
+        public void Rollback()
+        {
+            _scope.Rollback();
+            Dispose();
+        }
+
+        public void Dispose()
+        {
+            if (_disposed)
+                return;
+
+            _scope.Dispose();
+            _disposed = true;
+        }
     }
 }

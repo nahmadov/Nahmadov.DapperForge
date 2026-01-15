@@ -60,11 +60,20 @@ public class ConcurrentOperationsTests
     public async Task ConcurrentQueries_MultipleTasks_ExecuteSuccessfully()
     {
         // Arrange
-        var (ctx, conn) = CreateContext();
         var testData = Enumerable.Range(1, 100)
             .Select(i => new TestEntity { Id = i, Name = $"Entity{i}" })
             .ToArray();
-        conn.SetupQuery(testData);
+        var options = new DapperDbContextOptions
+        {
+            ConnectionFactory = () =>
+            {
+                var conn = new FakeDbConnection();
+                conn.SetupQuery(testData);
+                return conn;
+            },
+            Dialect = SqlServerDialect.Instance
+        };
+        var ctx = new TestContext(options);
 
         // Act - Execute 10 concurrent queries
         var tasks = Enumerable.Range(0, 10)
@@ -81,9 +90,18 @@ public class ConcurrentOperationsTests
     public async Task ConcurrentWhere_SameExpression_ReusesCachedCompilation()
     {
         // Arrange
-        var (ctx, conn) = CreateContext();
         var testData = new[] { new TestEntity { Id = 1, Name = "Test" } };
-        conn.SetupQuery(testData);
+        var options = new DapperDbContextOptions
+        {
+            ConnectionFactory = () =>
+            {
+                var conn = new FakeDbConnection();
+                conn.SetupQuery(testData);
+                return conn;
+            },
+            Dialect = SqlServerDialect.Instance
+        };
+        var ctx = new TestContext(options);
 
         // Act - Execute 20 concurrent queries with same Where predicate
         var tasks = Enumerable.Range(0, 20)
@@ -218,8 +236,17 @@ public class ConcurrentOperationsTests
     public async Task ExpressionCache_ConcurrentAccess_ThreadSafe()
     {
         // Arrange
-        var (ctx, conn) = CreateContext();
-        conn.SetupQuery(Array.Empty<TestEntity>());
+        var options = new DapperDbContextOptions
+        {
+            ConnectionFactory = () =>
+            {
+                var conn = new FakeDbConnection();
+                conn.SetupQuery(Array.Empty<TestEntity>());
+                return conn;
+            },
+            Dialect = SqlServerDialect.Instance
+        };
+        var ctx = new TestContext(options);
 
         // Act - Execute many concurrent queries with different predicates
         var tasks = Enumerable.Range(1, 100)
@@ -242,11 +269,20 @@ public class ConcurrentOperationsTests
     public async Task ConcurrentOrderBy_DifferentProperties_ExecutesCorrectly()
     {
         // Arrange
-        var (ctx, conn) = CreateContext();
         var testData = Enumerable.Range(1, 50)
             .Select(i => new TestEntity { Id = i, Name = $"Entity{i}", CreatedAt = DateTime.Now.AddDays(-i) })
             .ToArray();
-        conn.SetupQuery(testData);
+        var options = new DapperDbContextOptions
+        {
+            ConnectionFactory = () =>
+            {
+                var conn = new FakeDbConnection();
+                conn.SetupQuery(testData);
+                return conn;
+            },
+            Dialect = SqlServerDialect.Instance
+        };
+        var ctx = new TestContext(options);
         _ = ctx.Entities; // warm up model build before concurrent access
 
         // Act - Concurrent queries with different OrderBy

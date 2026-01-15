@@ -8,10 +8,15 @@ namespace Nahmadov.DapperForge.Core.Mapping;
 /// </summary>
 internal static class EntityMappingResolver
 {
-    public static EntityMapping Resolve(EntityMetadataSnapshot snapshot, EntityConfig config, string? defaultSchema)
+    public static EntityMapping Resolve(
+        EntityMetadataSnapshot snapshot,
+        EntityConfig config,
+        string? defaultSchema,
+        IReadOnlyDictionary<Type, EntityConfig> configs)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         ArgumentNullException.ThrowIfNull(config);
+        ArgumentNullException.ThrowIfNull(configs);
 
         var type = snapshot.EntityType;
         var tableName = !string.IsNullOrWhiteSpace(config.TableName)
@@ -29,7 +34,7 @@ internal static class EntityMappingResolver
         var keyProps = ResolveKeyProperties(config, snapshot, props);
         var alternateKeyProps = ResolveAlternateKeyProperties(config, props);
         var propertyMappings = BuildPropertyMappings(config, snapshot, keyProps);
-        var foreignKeys = BuildForeignKeyMappings(snapshot, config, propertyMappings);
+        var foreignKeys = BuildForeignKeyMappings(snapshot, config, propertyMappings, configs, defaultSchema);
 
         var isReadOnly = config.IsReadOnly || snapshot.IsReadOnly;
 
@@ -152,7 +157,9 @@ internal static class EntityMappingResolver
     private static IReadOnlyList<ForeignKeyMapping> BuildForeignKeyMappings(
         EntityMetadataSnapshot snapshot,
         EntityConfig config,
-        IReadOnlyCollection<PropertyMapping> propertyMappings)
+        IReadOnlyCollection<PropertyMapping> propertyMappings,
+        IReadOnlyDictionary<Type, EntityConfig> configs,
+        string? defaultSchema)
     {
         var foreignKeys = new List<ForeignKeyMapping>();
         var processedNavigations = new HashSet<string>(StringComparer.Ordinal);
@@ -183,27 +190,20 @@ internal static class EntityMappingResolver
                 ?? throw new InvalidOperationException($"Property '{fkProp.Name}' has no column mapping.");
 
             var principalType = rel.PrincipalEntityType;
-            var principalKeyPropName = rel.PrincipalKeyPropertyName ?? "Id";
-            var principalTableAttr = principalType.GetCustomAttribute<TableAttribute>();
-            var principalTableName = principalTableAttr?.Name ?? principalType.Name;
-            var principalSchema = principalTableAttr?.Schema;
-
-            var principalKeyProp = principalType.GetProperties(BindingFlags.Instance | BindingFlags.Public)
-                .FirstOrDefault(p => string.Equals(p.Name, principalKeyPropName, StringComparison.Ordinal))
-                ?? throw new InvalidOperationException(
-                    $"Key property '{principalKeyPropName}' not found on entity '{principalType.Name}'.");
-
-            var principalColumnAttr = principalKeyProp.GetCustomAttribute<ColumnAttribute>();
-            var principalColumnName = principalColumnAttr?.Name ?? principalKeyPropName;
+            var principalInfo = ResolvePrincipalInfo(
+                principalType,
+                rel.PrincipalKeyPropertyName,
+                configs,
+                defaultSchema);
 
             foreignKeys.Add(new ForeignKeyMapping(
                 navProp,
                 fkProp,
                 principalType,
                 fkColumnMapping.ColumnName,
-                principalColumnName,
-                principalTableName,
-                principalSchema));
+                principalInfo.KeyColumnName,
+                principalInfo.TableName,
+                principalInfo.Schema));
 
             processedNavigations.Add(rel.NavigationPropertyName);
         }
@@ -224,28 +224,21 @@ internal static class EntityMappingResolver
                 ?? throw new InvalidOperationException($"Property '{fkProp.Name}' has no column mapping.");
 
             var fkColumnName = fkColumnMapping.ColumnName;
-            var principalKeyPropName = fkAttr.PrincipalKeyPropertyName ?? "Id";
             var principalType = fkAttr.PrincipalEntityType;
-            var principalTableAttr = principalType.GetCustomAttribute<TableAttribute>();
-            var principalTableName = principalTableAttr?.Name ?? principalType.Name;
-            var principalSchema = principalTableAttr?.Schema;
-
-            var principalKeyProp = principalType.GetProperties(BindingFlags.Instance | BindingFlags.Public)
-                .FirstOrDefault(p => string.Equals(p.Name, principalKeyPropName, StringComparison.Ordinal))
-                ?? throw new InvalidOperationException(
-                    $"Key property '{principalKeyPropName}' not found on entity '{principalType.Name}'.");
-
-            var principalColumnAttr = principalKeyProp.GetCustomAttribute<ColumnAttribute>();
-            var principalColumnName = principalColumnAttr?.Name ?? principalKeyPropName;
+            var principalInfo = ResolvePrincipalInfo(
+                principalType,
+                fkAttr.PrincipalKeyPropertyName,
+                configs,
+                defaultSchema);
 
             foreignKeys.Add(new ForeignKeyMapping(
                 navProp,
                 fkProp,
                 principalType,
                 fkColumnName,
-                principalColumnName,
-                principalTableName,
-                principalSchema));
+                principalInfo.KeyColumnName,
+                principalInfo.TableName,
+                principalInfo.Schema));
         }
 
         return foreignKeys;
@@ -253,4 +246,127 @@ internal static class EntityMappingResolver
 
     private static string NormalizeKeyName(string name)
         => new(name.Where(char.IsLetterOrDigit).Select(char.ToUpperInvariant).ToArray());
+
+    private static PrincipalInfo ResolvePrincipalInfo(
+        Type principalType,
+        string? principalKeyPropertyName,
+        IReadOnlyDictionary<Type, EntityConfig> configs,
+        string? defaultSchema)
+    {
+        var principalSnapshot = GetSnapshot(principalType);
+        configs.TryGetValue(principalType, out var principalConfig);
+
+        var (tableName, schema) = ResolveTableInfo(principalConfig, principalSnapshot, defaultSchema);
+        var keyProp = ResolvePrincipalKeyProperty(
+            principalType,
+            principalKeyPropertyName,
+            principalConfig,
+            principalSnapshot);
+        var keyColumnName = ResolveColumnName(principalConfig, principalSnapshot, keyProp);
+
+        return new PrincipalInfo(keyColumnName, tableName, schema);
+    }
+
+    private static PropertyInfo ResolvePrincipalKeyProperty(
+        Type principalType,
+        string? principalKeyPropertyName,
+        EntityConfig? principalConfig,
+        EntityMetadataSnapshot principalSnapshot)
+    {
+        var props = principalSnapshot.ScalarProperties;
+
+        if (!string.IsNullOrWhiteSpace(principalKeyPropertyName))
+        {
+            return props.FirstOrDefault(p => string.Equals(p.Name, principalKeyPropertyName, StringComparison.Ordinal))
+                ?? throw new InvalidOperationException(
+                    $"Key property '{principalKeyPropertyName}' not found on entity '{principalType.Name}'.");
+        }
+
+        if (principalConfig is { HasKey: false })
+        {
+            throw new InvalidOperationException(
+                $"Principal entity '{principalType.Name}' has no key defined. Configure HasKey(...) or specify HasPrincipalKey(...).");
+        }
+
+        if (principalConfig?.KeyProperties.Count > 0)
+        {
+            if (principalConfig.KeyProperties.Count > 1)
+            {
+                throw new InvalidOperationException(
+                    $"Principal entity '{principalType.Name}' has multiple key properties. Specify HasPrincipalKey(...) for the relationship.");
+            }
+
+            var keyName = principalConfig.KeyProperties[0];
+            return props.FirstOrDefault(p => string.Equals(p.Name, keyName, StringComparison.Ordinal))
+                ?? throw new InvalidOperationException(
+                    $"Key property '{keyName}' not found on entity '{principalType.Name}'.");
+        }
+
+        if (principalSnapshot.KeyAttributeProperties.Count > 0)
+        {
+            if (principalSnapshot.KeyAttributeProperties.Count > 1)
+            {
+                throw new InvalidOperationException(
+                    $"Principal entity '{principalType.Name}' has multiple key properties. Specify HasPrincipalKey(...) for the relationship.");
+            }
+
+            return principalSnapshot.KeyAttributeProperties[0];
+        }
+
+        var convention = props.FirstOrDefault(p => string.Equals(p.Name, "Id", StringComparison.OrdinalIgnoreCase))
+            ?? props.FirstOrDefault(p => string.Equals(p.Name, principalType.Name + "Id", StringComparison.OrdinalIgnoreCase))
+            ?? props.FirstOrDefault(p => NormalizeKeyName(p.Name) == NormalizeKeyName(principalType.Name + "Id"));
+
+        if (convention is not null)
+            return convention;
+
+        throw new InvalidOperationException(
+            $"Principal entity '{principalType.Name}' has no key property. Configure HasKey(...) or specify HasPrincipalKey(...).");
+    }
+
+    private static (string TableName, string? Schema) ResolveTableInfo(
+        EntityConfig? config,
+        EntityMetadataSnapshot snapshot,
+        string? defaultSchema)
+    {
+        var tableName = !string.IsNullOrWhiteSpace(config?.TableName)
+            ? config.TableName!
+            : snapshot.TableName ?? snapshot.EntityType.Name;
+
+        var schema = !string.IsNullOrWhiteSpace(config?.Schema)
+            ? config.Schema
+            : snapshot.Schema ?? defaultSchema;
+
+        return (tableName, schema);
+    }
+
+    private static string ResolveColumnName(
+        EntityConfig? config,
+        EntityMetadataSnapshot snapshot,
+        PropertyInfo property)
+    {
+        if (config?.Properties.TryGetValue(property.Name, out var propConfig) != true)
+            propConfig = null;
+
+        snapshot.PropertyAttributes.TryGetValue(property, out var attrSnapshot);
+
+        var explicitColumn = string.IsNullOrWhiteSpace(propConfig?.ColumnName)
+            ? null
+            : propConfig!.ColumnName;
+
+        return explicitColumn ?? attrSnapshot?.ColumnName ?? property.Name;
+    }
+
+    private sealed record PrincipalInfo(string KeyColumnName, string TableName, string? Schema);
+
+    private static EntityMetadataSnapshot GetSnapshot(Type clrType)
+    {
+        var cacheType = typeof(EntityMappingCache<>).MakeGenericType(clrType);
+        var snapshotField = cacheType.GetField("Snapshot", BindingFlags.Public | BindingFlags.Static);
+
+        if (snapshotField?.GetValue(null) is not EntityMetadataSnapshot snapshot)
+            throw new InvalidOperationException($"Failed to retrieve metadata snapshot for {clrType.Name}.");
+
+        return snapshot;
+    }
 }

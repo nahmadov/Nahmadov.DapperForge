@@ -138,7 +138,7 @@ public class DapperSetAdvancedMutationTests
             // Expected with fake connection
         }
 
-        Assert.Equal(System.Data.ConnectionState.Open, conn.State);
+        Assert.True(conn.OpenCount > 0);
     }
 
     [Fact]
@@ -165,7 +165,7 @@ public class DapperSetAdvancedMutationTests
             // Expected with fake connection
         }
 
-        Assert.Equal(System.Data.ConnectionState.Open, conn.State);
+        Assert.True(conn.OpenCount > 0);
     }
 
     [Fact]
@@ -192,7 +192,7 @@ public class DapperSetAdvancedMutationTests
             // Expected with fake connection
         }
 
-        Assert.Equal(System.Data.ConnectionState.Open, conn.State);
+        Assert.True(conn.OpenCount > 0);
     }
 
     [Fact]
@@ -241,7 +241,7 @@ public class DapperSetAdvancedMutationTests
             // Expected with fake connection
         }
 
-        Assert.Equal(System.Data.ConnectionState.Open, conn.State);
+        Assert.True(conn.OpenCount > 0);
     }
 
     [Fact]
@@ -262,7 +262,7 @@ public class DapperSetAdvancedMutationTests
             // Expected with fake connection
         }
 
-        Assert.Equal(System.Data.ConnectionState.Open, conn.State);
+        Assert.True(conn.OpenCount > 0);
     }
 
     [Fact]
@@ -283,7 +283,7 @@ public class DapperSetAdvancedMutationTests
             // Expected with fake connection
         }
 
-        Assert.Equal(System.Data.ConnectionState.Open, conn.State);
+        Assert.True(conn.OpenCount > 0);
     }
 
     [Fact]
@@ -325,7 +325,7 @@ public class DapperSetAdvancedMutationTests
             // Expected with fake connection
         }
 
-        Assert.Equal(System.Data.ConnectionState.Open, conn.State);
+        Assert.True(conn.OpenCount > 0);
     }
 
     [Fact]
@@ -344,7 +344,7 @@ public class DapperSetAdvancedMutationTests
             // Expected with fake connection
         }
 
-        Assert.Equal(System.Data.ConnectionState.Open, conn.State);
+        Assert.True(conn.OpenCount > 0);
     }
 
     [Fact]
@@ -371,7 +371,7 @@ public class DapperSetAdvancedMutationTests
             // Expected with fake connection
         }
 
-        Assert.Equal(System.Data.ConnectionState.Open, conn.State);
+        Assert.True(conn.OpenCount > 0);
     }
 
     #endregion
@@ -396,7 +396,7 @@ public class DapperSetAdvancedMutationTests
             // Expected with fake connection
         }
 
-        Assert.Equal(System.Data.ConnectionState.Open, conn.State);
+        Assert.True(conn.OpenCount > 0);
     }
 
     [Fact]
@@ -415,7 +415,7 @@ public class DapperSetAdvancedMutationTests
             // Expected with fake connection
         }
 
-        Assert.Equal(System.Data.ConnectionState.Open, conn.State);
+        Assert.True(conn.OpenCount > 0);
     }
 
     [Fact]
@@ -439,7 +439,7 @@ public class DapperSetAdvancedMutationTests
             // Expected with fake connection
         }
 
-        Assert.Equal(System.Data.ConnectionState.Open, conn.State);
+        Assert.True(conn.OpenCount > 0);
     }
 
     [Fact]
@@ -460,7 +460,7 @@ public class DapperSetAdvancedMutationTests
             // Expected with fake connection
         }
 
-        Assert.Equal(System.Data.ConnectionState.Open, conn.State);
+        Assert.True(conn.OpenCount > 0);
     }
 
     #endregion
@@ -488,7 +488,7 @@ public class DapperSetAdvancedMutationTests
             // Expected with fake connection
         }
 
-        Assert.Equal(System.Data.ConnectionState.Open, conn.State);
+        Assert.True(conn.OpenCount > 0);
     }
 
     [Fact]
@@ -509,7 +509,7 @@ public class DapperSetAdvancedMutationTests
             // Expected with fake connection
         }
 
-        Assert.Equal(System.Data.ConnectionState.Open, conn.State);
+        Assert.True(conn.OpenCount > 0);
     }
 
     [Fact]
@@ -534,7 +534,7 @@ public class DapperSetAdvancedMutationTests
             // Expected with fake connection
         }
 
-        Assert.Equal(System.Data.ConnectionState.Open, conn.State);
+        Assert.True(conn.OpenCount > 0);
     }
 
     #endregion
@@ -562,7 +562,7 @@ public class DapperSetAdvancedMutationTests
             // Expected with fake connection
         }
 
-        Assert.Equal(System.Data.ConnectionState.Open, conn.State);
+        Assert.True(conn.OpenCount > 0);
     }
 
     [Fact]
@@ -583,7 +583,7 @@ public class DapperSetAdvancedMutationTests
             // Expected with fake connection
         }
 
-        Assert.Equal(System.Data.ConnectionState.Open, conn.State);
+        Assert.True(conn.OpenCount > 0);
     }
 
     #endregion
@@ -611,7 +611,7 @@ public class DapperSetAdvancedMutationTests
             // Expected with fake connection
         }
 
-        Assert.Equal(System.Data.ConnectionState.Open, conn.State);
+        Assert.True(conn.OpenCount > 0);
     }
 
     [Fact]
@@ -632,7 +632,7 @@ public class DapperSetAdvancedMutationTests
             // Expected with fake connection
         }
 
-        Assert.Equal(System.Data.ConnectionState.Open, conn.State);
+        Assert.True(conn.OpenCount > 0);
     }
 
     #endregion
@@ -691,7 +691,7 @@ public class DapperSetAdvancedMutationTests
             // Expected with fake connection
         }
 
-        Assert.Equal(System.Data.ConnectionState.Open, conn.State);
+        Assert.True(conn.OpenCount > 0);
     }
 
     #endregion

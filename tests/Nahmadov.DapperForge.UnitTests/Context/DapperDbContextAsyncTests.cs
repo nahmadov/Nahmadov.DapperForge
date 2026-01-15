@@ -44,7 +44,7 @@ public class DapperDbContextAsyncTests
             // Expected to fail since we're using a fake connection
         }
 
-        Assert.Equal(ConnectionState.Open, conn.State);
+        Assert.True(conn.OpenCount > 0);
     }
 
     [Fact]
@@ -61,7 +61,7 @@ public class DapperDbContextAsyncTests
             // Expected to fail since we're using a fake connection
         }
 
-        Assert.Equal(ConnectionState.Open, conn.State);
+        Assert.True(conn.OpenCount > 0);
     }
 
     [Fact]

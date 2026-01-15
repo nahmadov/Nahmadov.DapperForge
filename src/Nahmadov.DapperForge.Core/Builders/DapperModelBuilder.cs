@@ -143,7 +143,7 @@ public class DapperModelBuilder(ISqlDialect dialect, string? defaultSchema = nul
     private EntityMapping BuildEntityMapping(EntityConfig config)
     {
         var snapshot = GetSnapshot(config.ClrType);
-        return EntityMappingResolver.Resolve(snapshot, config, _defaultSchema);
+        return EntityMappingResolver.Resolve(snapshot, config, _defaultSchema, _entities);
     }
 
     private static EntityMetadataSnapshot GetSnapshot(Type clrType)

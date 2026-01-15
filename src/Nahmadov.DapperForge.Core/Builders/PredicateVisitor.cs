@@ -46,7 +46,7 @@ namespace Nahmadov.DapperForge.Core.Builders;
 public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
     where TEntity : class
 {
-    private static readonly LruCache<ExpressionCacheKey, Delegate> _compiledExpressionCache = new(maxSize: 1000);
+    private static readonly LruCache<ExpressionCacheKey, Func<object?>> _compiledExpressionCache = new(maxSize: 1000);
 
     private readonly EntityMapping _mapping;
     private readonly ISqlDialect _dialect;
@@ -762,12 +762,60 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
         if (expr is ConstantExpression constant)
             return constant.Value;
 
-        var lambda = Expression.Lambda(expr);
+        if (expr is MemberExpression member)
+            return EvaluateMemberExpression(member);
+
+        if (expr is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } unary)
+            return EvaluateExpression(unary.Operand);
+
+        if (expr is NewArrayExpression arrayExpr)
+        {
+            var elementType = arrayExpr.Type.GetElementType() ?? typeof(object);
+            var array = Array.CreateInstance(elementType, arrayExpr.Expressions.Count);
+            for (var i = 0; i < arrayExpr.Expressions.Count; i++)
+            {
+                array.SetValue(EvaluateExpression(arrayExpr.Expressions[i]), i);
+            }
+            return array;
+        }
+
+        if (expr.Type.IsByRefLike)
+        {
+            if (expr is UnaryExpression unarySpan)
+                return EvaluateExpression(unarySpan.Operand);
+
+            if (expr is MethodCallExpression callSpan && callSpan.Arguments.Count > 0)
+                return EvaluateExpression(callSpan.Arguments[0]);
+
+            throw new NotSupportedException("By-ref-like expressions cannot be evaluated.");
+        }
+
+        var converted = Expression.Convert(expr, typeof(object));
+        var lambda = Expression.Lambda<Func<object?>>(converted);
         var cacheKey = new ExpressionCacheKey(lambda);
 
-        var compiled = _compiledExpressionCache.GetOrAdd(cacheKey, _ => lambda.Compile());
+        var compiled = _compiledExpressionCache.GetOrAdd(cacheKey, _ => lambda.Compile(preferInterpretation: true));
 
-        return compiled.DynamicInvoke();
+        return compiled();
+    }
+
+    private static object? EvaluateMemberExpression(MemberExpression member)
+    {
+        object? target = null;
+        if (member.Expression is not null)
+        {
+            if (member.Expression is ParameterExpression)
+                throw new NotSupportedException("Cannot evaluate member access on a parameter expression.");
+
+            target = EvaluateExpression(member.Expression);
+        }
+
+        return member.Member switch
+        {
+            FieldInfo fi => fi.GetValue(target),
+            PropertyInfo pi => pi.GetValue(target),
+            _ => throw new NotSupportedException($"Unsupported member type: {member.Member.MemberType}")
+        };
     }
 
     /// <summary>

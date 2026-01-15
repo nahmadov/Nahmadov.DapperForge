@@ -60,6 +60,19 @@ public class FluentRelationshipTests
         public string Bio { get; set; } = string.Empty;
     }
 
+    private class HistoryType
+    {
+        public int HistoryTypeId { get; set; }
+        public List<History> Histories { get; set; } = new();
+    }
+
+    private class History
+    {
+        public int Id { get; set; }
+        public int HistoryTypeId { get; set; }
+        public HistoryType? HistoryType { get; set; }
+    }
+
     #endregion
 
     #region HasOne().WithMany() Tests
@@ -134,6 +147,33 @@ public class FluentRelationshipTests
 
         Assert.Single(orderMapping.ForeignKeys);
         Assert.Equal("Customer", orderMapping.ForeignKeys[0].NavigationProperty.Name);
+    }
+
+    [Fact]
+    public void HasOne_WithMany_UsesConfiguredPrincipalKey()
+    {
+        var modelBuilder = new DapperModelBuilder(SqlServerDialect.Instance);
+
+        modelBuilder.Entity<HistoryType>(b =>
+        {
+            b.ToTable("HistType");
+            b.Property(h => h.HistoryTypeId).HasColumnName("HistType");
+            b.HasKey(h => h.HistoryTypeId);
+        });
+
+        modelBuilder.Entity<History>(b =>
+        {
+            b.HasOne<HistoryType>(h => h.HistoryType)
+             .WithMany(ht => ht.Histories)
+             .HasForeignKey(h => h.HistoryTypeId);
+        });
+
+        var mappings = modelBuilder.Build();
+        var historyMapping = mappings[typeof(History)];
+
+        var fk = Assert.Single(historyMapping.ForeignKeys);
+        Assert.Equal("HistType", fk.PrincipalTableName);
+        Assert.Equal("HistType", fk.PrincipalKeyColumnName);
     }
 
     #endregion
