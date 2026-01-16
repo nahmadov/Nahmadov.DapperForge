@@ -2,12 +2,33 @@ using System.ComponentModel.DataAnnotations;
 
 namespace ConnectionSample;
 
-public class Customer
+/// <summary>
+/// Base entity demonstrating inheritance scenario.
+/// Properties defined here should work correctly in derived entity queries.
+/// </summary>
+public abstract class BaseEntity
 {
     public int Id { get; set; }
 
     [Required, MaxLength(120)]
     public string Name { get; set; } = string.Empty;
+
+    public DateTime CreatedAt { get; set; }
+}
+
+/// <summary>
+/// Interface demonstrating interface implementation scenario.
+/// Properties defined here should work correctly in implementing entity queries.
+/// </summary>
+public interface ITrackable
+{
+    bool IsActive { get; set; }
+    DateTime? LastModified { get; set; }
+}
+
+public class Customer : BaseEntity, ITrackable
+{
+    // Id, Name, CreatedAt inherited from BaseEntity
 
     [MaxLength(200)]
     public string? Email { get; set; }
@@ -15,9 +36,10 @@ public class Customer
     [MaxLength(100)]
     public string? City { get; set; }
 
+    // IsActive, LastModified from ITrackable interface
     public bool IsActive { get; set; }
 
-    public DateTime CreatedAt { get; set; }
+    public DateTime? LastModified { get; set; }
 
     public DateTime? LastLogin { get; set; }
 

@@ -2,7 +2,6 @@ using System.Linq.Expressions;
 using System.Reflection;
 using System.Text;
 
-using Nahmadov.DapperForge.Core.Querying.Predicates;
 using Nahmadov.DapperForge.Core.Abstractions;
 using Nahmadov.DapperForge.Core.Modeling.Mapping;
 
@@ -65,7 +64,10 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
         _mapping = mapping ?? throw new ArgumentNullException(nameof(mapping));
         ArgumentNullException.ThrowIfNull(dialect);
 
-        _propertyLookup = _mapping.PropertyMappings.ToDictionary(pm => pm.Property, pm => pm);
+        _propertyLookup = _mapping.PropertyMappings.ToDictionary(
+            pm => pm.Property,
+            pm => pm,
+            PropertyInfoEqualityComparer.Instance);
         _defaultIgnoreCase = string.Equals(dialect.Name, "Oracle", StringComparison.OrdinalIgnoreCase);
         _treatEmptyStringAsNull = string.Equals(dialect.Name, "Oracle", StringComparison.OrdinalIgnoreCase);
 

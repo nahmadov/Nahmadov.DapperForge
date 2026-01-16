@@ -25,7 +25,10 @@ public sealed class OrderingVisitor<TEntity> : ExpressionVisitor
     {
         _mapping = mapping ?? throw new ArgumentNullException(nameof(mapping));
         _dialect = dialect ?? throw new ArgumentNullException(nameof(dialect));
-        _propertyLookup = _mapping.PropertyMappings.ToDictionary(pm => pm.Property, pm => pm);
+        _propertyLookup = _mapping.PropertyMappings.ToDictionary(
+            pm => pm.Property,
+            pm => pm,
+            PropertyInfoEqualityComparer.Instance);
     }
 
     /// <summary>
