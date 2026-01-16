@@ -39,9 +39,15 @@ public class EntityTypeBuilder<TEntity>(EntityConfig entity) : IEntityTypeBuilde
 
     /// <summary>
     /// Configures the primary key using property selector expressions.
+    /// Supports both individual property expressions and anonymous type expressions for composite keys.
     /// </summary>
     /// <param name="keyExpressions">Expressions pointing to key properties.</param>
     /// <returns>The current builder for chaining.</returns>
+    /// <example>
+    /// Single key: builder.HasKey(e => e.Id);
+    /// Composite key (individual): builder.HasKey(e => e.Key1, e => e.Key2);
+    /// Composite key (anonymous): builder.HasKey(e => new { e.Key1, e.Key2 });
+    /// </example>
     public EntityTypeBuilder<TEntity> HasKey(params Expression<Func<TEntity, object?>>[] keyExpressions)
     {
         if (keyExpressions.Length == 0)
@@ -50,8 +56,11 @@ public class EntityTypeBuilder<TEntity>(EntityConfig entity) : IEntityTypeBuilde
         _entity.KeyProperties.Clear();
         foreach (var expr in keyExpressions)
         {
-            var name = GetPropertyName(expr);
-            _entity.KeyProperties.Add(name);
+            var names = GetPropertyNames(expr);
+            foreach (var name in names)
+            {
+                _entity.KeyProperties.Add(name);
+            }
         }
         return this;
     }
@@ -60,6 +69,7 @@ public class EntityTypeBuilder<TEntity>(EntityConfig entity) : IEntityTypeBuilde
     /// Configures an alternate key (business key) using property selector expressions.
     /// Alternate keys represent business-level uniqueness and are used for Update/Delete
     /// operations when a primary key doesn't exist.
+    /// Supports both individual property expressions and anonymous type expressions for composite keys.
     /// </summary>
     /// <param name="keyExpressions">Expressions pointing to alternate key properties.</param>
     /// <returns>The current builder for chaining.</returns>
@@ -67,6 +77,11 @@ public class EntityTypeBuilder<TEntity>(EntityConfig entity) : IEntityTypeBuilde
     /// Alternate keys should be backed by a unique constraint or unique index in the database.
     /// Examples: employee number, email, account number, etc.
     /// </remarks>
+    /// <example>
+    /// Single alternate key: builder.HasAlternateKey(e => e.Email);
+    /// Composite alternate key (individual): builder.HasAlternateKey(e => e.TenantId, e => e.Code);
+    /// Composite alternate key (anonymous): builder.HasAlternateKey(e => new { e.TenantId, e.Code });
+    /// </example>
     public EntityTypeBuilder<TEntity> HasAlternateKey(params Expression<Func<TEntity, object?>>[] keyExpressions)
     {
         if (keyExpressions.Length == 0)
@@ -75,8 +90,11 @@ public class EntityTypeBuilder<TEntity>(EntityConfig entity) : IEntityTypeBuilde
         _entity.AlternateKeyProperties.Clear();
         foreach (var expr in keyExpressions)
         {
-            var name = GetPropertyName(expr);
-            _entity.AlternateKeyProperties.Add(name);
+            var names = GetPropertyNames(expr);
+            foreach (var name in names)
+            {
+                _entity.AlternateKeyProperties.Add(name);
+            }
         }
         return this;
     }
@@ -148,6 +166,67 @@ public class EntityTypeBuilder<TEntity>(EntityConfig entity) : IEntityTypeBuilde
     {
         var navigationName = GetPropertyName(navigationExpression);
         return new CollectionNavigationBuilder<TEntity, TRelated>(_entity, navigationName);
+    }
+
+    /// <summary>
+    /// Extracts property names from an expression.
+    /// Supports simple member access (e => e.Property) and anonymous types (e => new { e.Prop1, e.Prop2 }).
+    /// </summary>
+    /// <param name="expr">Expression pointing to property(ies).</param>
+    /// <returns>List of property names.</returns>
+    private static List<string> GetPropertyNames(Expression<Func<TEntity, object?>> expr)
+    {
+        var body = expr.Body;
+
+        // Handle Convert/boxing for value types
+        if (body is UnaryExpression unary && unary.NodeType == ExpressionType.Convert)
+        {
+            body = unary.Operand;
+        }
+
+        // Single property: e => e.Property
+        if (body is MemberExpression member)
+        {
+            return [member.Member.Name];
+        }
+
+        // Anonymous type: e => new { e.Prop1, e.Prop2 }
+        if (body is NewExpression newExpr)
+        {
+            if (newExpr.Members is null || newExpr.Members.Count == 0)
+            {
+                throw new InvalidOperationException(
+                    "Anonymous type expression must contain at least one property.");
+            }
+
+            var names = new List<string>(newExpr.Arguments.Count);
+            foreach (var arg in newExpr.Arguments)
+            {
+                var argExpr = arg;
+
+                // Handle Convert/boxing
+                if (argExpr is UnaryExpression argUnary && argUnary.NodeType == ExpressionType.Convert)
+                {
+                    argExpr = argUnary.Operand;
+                }
+
+                if (argExpr is MemberExpression argMember)
+                {
+                    names.Add(argMember.Member.Name);
+                }
+                else
+                {
+                    throw new InvalidOperationException(
+                        "Anonymous type must contain only simple property expressions.");
+                }
+            }
+
+            return names;
+        }
+
+        throw new InvalidOperationException(
+            "Expression must be a simple property access (e => e.Property) " +
+            "or an anonymous type (e => new { e.Prop1, e.Prop2 }).");
     }
 
     /// <summary>

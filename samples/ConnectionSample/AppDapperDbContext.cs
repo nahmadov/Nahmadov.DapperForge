@@ -9,6 +9,7 @@ public class AppDapperDbContext(DapperDbContextOptions<AppDapperDbContext> optio
     public DapperSet<Customer> Customers => Set<Customer>();
     public DapperSet<SupportTicket> Tickets => Set<SupportTicket>();
     public DapperSet<AuditLog> AuditLogs => Set<AuditLog>();
+    public DapperSet<Product> Products => Set<Product>();
 
     protected override void OnModelCreating(DapperModelBuilder modelBuilder)
     {
@@ -38,6 +39,19 @@ public class AppDapperDbContext(DapperDbContextOptions<AppDapperDbContext> optio
             b.Property(a => a.Entity).HasMaxLength(100);
             b.Property(a => a.Action).HasMaxLength(50);
             b.Property(a => a.Details).HasMaxLength(200);
+        });
+
+        // Product entity with composite alternate key (no primary key)
+        // Demonstrates multi-tenant scenario where products are unique within tenant by code
+        modelBuilder.Entity<Product>(b =>
+        {
+            b.ToTable("Products", modelBuilder.DefaultSchema);
+            b.HasNoKey(); // No primary key
+            b.HasAlternateKey(p => new { p.TenantId, p.ProductCode }); // Composite business key
+
+            b.Property(p => p.ProductCode).HasMaxLength(50).IsRequired();
+            b.Property(p => p.Name).HasMaxLength(200).IsRequired();
+            b.Property(p => p.Description).HasMaxLength(500);
         });
     }
 }

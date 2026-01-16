@@ -17,6 +17,7 @@ public class SampleRunner(AppDapperDbContext db)
         await ShowReadOnlyExampleAsync();
         await ShowDapperQueryableExamplesAsync();
         await ShowIncludeExamplesAsync();
+        await ShowAlternateKeyExamplesAsync();
         await ShowTransactionExamplesAsync();
     }
 
@@ -294,6 +295,139 @@ public class SampleRunner(AppDapperDbContext db)
             Console.WriteLine($"    - Customer: {customerName}");
             Console.WriteLine($"    - Status: {ticket.Status}");
         }
+    }
+
+    private async Task ShowAlternateKeyExamplesAsync()
+    {
+        Console.WriteLine("\n=== Composite Alternate Key Examples (Product Entity) ===\n");
+
+        const int tenantId = 1;
+
+        // 1. INSERT - Create products with composite alternate key
+        Console.WriteLine("1. INSERT - Creating products with composite alternate key...");
+
+        var product1 = new Product
+        {
+            TenantId = tenantId,
+            ProductCode = "LAPTOP-001",
+            Name = "Business Laptop Pro",
+            Description = "High-performance laptop for business use",
+            Price = 1299.99m,
+            StockQuantity = 50,
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        var product2 = new Product
+        {
+            TenantId = tenantId,
+            ProductCode = "MOUSE-001",
+            Name = "Wireless Mouse",
+            Description = "Ergonomic wireless mouse",
+            Price = 49.99m,
+            StockQuantity = 200,
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        // Check if products already exist
+        var existingProduct1 = await _db.Products.FirstOrDefaultAsync(
+            p => p.TenantId == tenantId && p.ProductCode == "LAPTOP-001");
+
+        if (existingProduct1 is null)
+        {
+            await _db.Products.InsertAsync(product1);
+            Console.WriteLine($"  ✓ Inserted: {product1.Name} (TenantId={product1.TenantId}, Code={product1.ProductCode})");
+        }
+        else
+        {
+            Console.WriteLine($"  - Product already exists: {existingProduct1.Name}");
+        }
+
+        var existingProduct2 = await _db.Products.FirstOrDefaultAsync(
+            p => p.TenantId == tenantId && p.ProductCode == "MOUSE-001");
+
+        if (existingProduct2 is null)
+        {
+            await _db.Products.InsertAsync(product2);
+            Console.WriteLine($"  ✓ Inserted: {product2.Name} (TenantId={product2.TenantId}, Code={product2.ProductCode})");
+        }
+        else
+        {
+            Console.WriteLine($"  - Product already exists: {existingProduct2.Name}");
+        }
+
+        // 2. SELECT - Query products
+        Console.WriteLine("\n2. SELECT - Querying products...");
+
+        var allProducts = await _db.Products.WhereAsync(p => p.TenantId == tenantId);
+        Console.WriteLine($"  Found {allProducts.Count()} products for Tenant {tenantId}:");
+        foreach (var p in allProducts)
+        {
+            Console.WriteLine($"    - [{p.ProductCode}] {p.Name}: ${p.Price} (Stock: {p.StockQuantity})");
+        }
+
+        // 3. UPDATE - Update product using composite alternate key
+        Console.WriteLine("\n3. UPDATE - Updating product using composite alternate key...");
+
+        var productToUpdate = await _db.Products.FirstOrDefaultAsync(
+            p => p.TenantId == tenantId && p.ProductCode == "LAPTOP-001");
+
+        if (productToUpdate is not null)
+        {
+            var oldPrice = productToUpdate.Price;
+            productToUpdate.Price = 1199.99m;
+            productToUpdate.StockQuantity = 45;
+            productToUpdate.UpdatedAt = DateTime.UtcNow;
+
+            // Update using WHERE with composite key
+            await _db.Products.UpdateAsync(
+                productToUpdate,
+                new { productToUpdate.TenantId, productToUpdate.ProductCode });
+
+            Console.WriteLine($"  ✓ Updated {productToUpdate.Name}: Price ${oldPrice} -> ${productToUpdate.Price}");
+        }
+
+        // 4. DELETE - Delete product using composite alternate key
+        Console.WriteLine("\n4. DELETE - Deleting product using composite alternate key...");
+
+        // Create a temporary product to delete
+        var tempProduct = new Product
+        {
+            TenantId = tenantId,
+            ProductCode = "TEMP-DELETE-001",
+            Name = "Temporary Product",
+            Price = 9.99m,
+            StockQuantity = 1,
+            IsActive = false,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        await _db.Products.InsertAsync(tempProduct);
+        Console.WriteLine($"  - Created temp product: {tempProduct.ProductCode}");
+
+        // Delete using WHERE with composite key
+        await _db.Products.DeleteAsync(
+            new { tempProduct.TenantId, tempProduct.ProductCode });
+
+        Console.WriteLine($"  ✓ Deleted product with composite key: TenantId={tempProduct.TenantId}, Code={tempProduct.ProductCode}");
+
+        // 5. Query with DapperQueryable
+        Console.WriteLine("\n5. QUERY - Using DapperQueryable with alternate key entity...");
+
+        var activeProducts = await _db.Products
+            .Query()
+            .Where(p => p.TenantId == tenantId && p.IsActive)
+            .OrderBy(p => p.Name)
+            .ToListAsync();
+
+        Console.WriteLine($"  Active products for Tenant {tenantId}:");
+        foreach (var p in activeProducts)
+        {
+            Console.WriteLine($"    - {p.Name} (${p.Price})");
+        }
+
+        Console.WriteLine("\n  ✓ Composite alternate key CRUD operations completed successfully!");
     }
 
     private async Task ShowTransactionExamplesAsync()

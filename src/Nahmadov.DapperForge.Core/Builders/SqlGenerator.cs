@@ -132,6 +132,7 @@ internal sealed class SqlGenerator<TEntity> where TEntity : class
 
     /// <summary>
     /// Builds a SELECT statement filtered by the configured key columns with table alias.
+    /// Uses effective key (primary key if available, otherwise alternate key).
     /// </summary>
     /// <returns>SELECT by key SQL or an empty string if no key exists.</returns>
     private string BuildSelectByIdSql()
@@ -140,7 +141,7 @@ internal sealed class SqlGenerator<TEntity> where TEntity : class
             return string.Empty;
 
         const string tableAlias = "a";
-        var predicates = _mapping.KeyProperties
+        var predicates = _mapping.EffectiveKey
             .Select(p =>
             {
                 var column = GetColumnNameForProperty(p);

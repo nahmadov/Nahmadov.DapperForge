@@ -67,3 +67,38 @@ public class AuditLog
 
     public DateTime CreatedAt { get; set; }
 }
+
+/// <summary>
+/// Product entity demonstrating composite alternate key usage.
+/// This entity has no primary key - it uses TenantId + ProductCode as a business key.
+/// </summary>
+public class Product
+{
+    /// <summary>
+    /// Tenant identifier - part of composite alternate key.
+    /// </summary>
+    [Required]
+    public int TenantId { get; set; }
+
+    /// <summary>
+    /// Product code unique within tenant - part of composite alternate key.
+    /// </summary>
+    [Required, MaxLength(50)]
+    public string ProductCode { get; set; } = string.Empty;
+
+    [Required, MaxLength(200)]
+    public string Name { get; set; } = string.Empty;
+
+    [MaxLength(500)]
+    public string? Description { get; set; }
+
+    public decimal Price { get; set; }
+
+    public int StockQuantity { get; set; }
+
+    public bool IsActive { get; set; } = true;
+
+    public DateTime CreatedAt { get; set; }
+
+    public DateTime? UpdatedAt { get; set; }
+}

@@ -135,6 +135,57 @@ public class SqlGeneratorTests
         Assert.Contains("\"user_seq\".NEXTVAL", generator.InsertSql);
     }
 
+    [Fact]
+    public void CompositeAlternateKey_Uses_All_Key_Columns_In_Where()
+    {
+        var mapping = BuildCompositeAlternateKeyMapping();
+        var generator = new SqlGenerator<CompositeAlternateKeyEntity>(SqlServerDialect.Instance, mapping);
+
+        Assert.Contains("WHERE a.[TenantId] = @TenantId AND a.[Code] = @Code", generator.SelectByIdSql);
+        Assert.Contains("WHERE [TenantId] = @TenantId AND [Code] = @Code", generator.DeleteByIdSql);
+        Assert.Contains("WHERE [TenantId] = @TenantId AND [Code] = @Code", generator.UpdateSql);
+    }
+
+    [Fact]
+    public void CompositeAlternateKey_WithAnonymousType_Uses_All_Key_Columns_In_Where()
+    {
+        var mapping = BuildCompositeAlternateKeyAnonymousMapping();
+        var generator = new SqlGenerator<CompositeAlternateKeyEntity>(SqlServerDialect.Instance, mapping);
+
+        Assert.Contains("WHERE a.[TenantId] = @TenantId AND a.[Code] = @Code", generator.SelectByIdSql);
+        Assert.Contains("WHERE [TenantId] = @TenantId AND [Code] = @Code", generator.DeleteByIdSql);
+        Assert.Contains("WHERE [TenantId] = @TenantId AND [Code] = @Code", generator.UpdateSql);
+    }
+
+    [Fact]
+    public void CompositeKey_WithAnonymousType_Uses_All_Key_Columns_In_Where()
+    {
+        var builder = new DapperModelBuilder(SqlServerDialect.Instance);
+        builder.Entity<CompositeEntity>(b =>
+        {
+            b.ToTable("Users", "dbo");
+            b.HasKey(e => new { e.TenantId, e.UserId });
+        });
+        var mapping = builder.Build()[typeof(CompositeEntity)];
+        var generator = new SqlGenerator<CompositeEntity>(SqlServerDialect.Instance, mapping);
+
+        Assert.Contains("WHERE a.[TenantId] = @TenantId AND a.[UserId] = @UserId", generator.SelectByIdSql);
+        Assert.Contains("WHERE [TenantId] = @TenantId AND [UserId] = @UserId", generator.DeleteByIdSql);
+    }
+
+    [Fact]
+    public void CompositeAlternateKey_ExcludesKeyColumnsFromUpdate()
+    {
+        var mapping = BuildCompositeAlternateKeyMapping();
+        var generator = new SqlGenerator<CompositeAlternateKeyEntity>(SqlServerDialect.Instance, mapping);
+
+        // Key columns should not appear in SET clause
+        Assert.DoesNotContain("[TenantId] =", generator.UpdateSql.Split("WHERE")[0]);
+        Assert.DoesNotContain("[Code] =", generator.UpdateSql.Split("WHERE")[0]);
+        // But Name should be updatable
+        Assert.Contains("[Name] = @Name", generator.UpdateSql);
+    }
+
     [Table("Users", Schema = "dbo")]
     private class UserEntity
     {
@@ -182,6 +233,37 @@ public class SqlGeneratorTests
         public int TenantId { get; set; }
         public int UserId { get; set; }
         public string Name { get; set; } = string.Empty;
+    }
+
+    private class CompositeAlternateKeyEntity
+    {
+        public int TenantId { get; set; }
+        public string Code { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
+    }
+
+    private static EntityMapping BuildCompositeAlternateKeyMapping()
+    {
+        var builder = new DapperModelBuilder(SqlServerDialect.Instance);
+        builder.Entity<CompositeAlternateKeyEntity>(b =>
+        {
+            b.ToTable("Products", "dbo");
+            b.HasNoKey();
+            b.HasAlternateKey(e => e.TenantId, e => e.Code);
+        });
+        return builder.Build()[typeof(CompositeAlternateKeyEntity)];
+    }
+
+    private static EntityMapping BuildCompositeAlternateKeyAnonymousMapping()
+    {
+        var builder = new DapperModelBuilder(SqlServerDialect.Instance);
+        builder.Entity<CompositeAlternateKeyEntity>(b =>
+        {
+            b.ToTable("Products", "dbo");
+            b.HasNoKey();
+            b.HasAlternateKey(e => new { e.TenantId, e.Code });
+        });
+        return builder.Build()[typeof(CompositeAlternateKeyEntity)];
     }
 
     private class OracleSeqEntity
