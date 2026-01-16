@@ -2,10 +2,11 @@ using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using System.Linq.Expressions;
 
-using Nahmadov.DapperForge.Core.Builders;
-using Nahmadov.DapperForge.Core.Common;
+using Nahmadov.DapperForge.Core.Modeling.Builders;
+using Nahmadov.DapperForge.Core.Querying.Sql;
+using Nahmadov.DapperForge.Core.Context.Options;
 using Nahmadov.DapperForge.Core.Context;
-using Nahmadov.DapperForge.Core.Mapping;
+using Nahmadov.DapperForge.Core.Modeling.Mapping;
 using Nahmadov.DapperForge.UnitTests.Fakes;
 using Nahmadov.DapperForge.SqlServer;
 using Xunit;
@@ -213,7 +214,7 @@ public class DapperSetCrudTests
             Email = "john@example.com"
         };
 
-        await Assert.ThrowsAsync<Nahmadov.DapperForge.Core.Exceptions.DapperValidationException>(async () =>
+        await Assert.ThrowsAsync<Nahmadov.DapperForge.Core.Infrastructure.Exceptions.DapperValidationException>(async () =>
         {
             await set.InsertAsync(user);
         });
@@ -313,3 +314,6 @@ public class DapperSetCrudTests
         }
     }
 }
+
+
+

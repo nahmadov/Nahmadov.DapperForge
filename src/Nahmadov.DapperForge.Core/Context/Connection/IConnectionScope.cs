@@ -1,7 +1,6 @@
 using System.Data;
 
 namespace Nahmadov.DapperForge.Core.Context.Connection;
-
 /// <summary>
 /// Represents a scoped database connection that ensures proper connection lifecycle management.
 /// Connections are returned to the pool when the scope is disposed.
@@ -38,3 +37,4 @@ public interface IConnectionScope : IDisposable
     /// </summary>
     IDbTransaction? ActiveTransaction { get; }
 }
+

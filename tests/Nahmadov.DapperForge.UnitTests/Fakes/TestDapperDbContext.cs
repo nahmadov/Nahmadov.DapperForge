@@ -1,6 +1,6 @@
 using System.Data;
 
-using Nahmadov.DapperForge.Core.Common;
+using Nahmadov.DapperForge.Core.Context.Options;
 using Nahmadov.DapperForge.Core.Context;
 
 namespace Nahmadov.DapperForge.UnitTests.Fakes;
@@ -12,3 +12,4 @@ public class TestDapperDbContext(DapperDbContextOptions<TestDapperDbContext> opt
     public IDbConnection ExposeConnection() => Connection;
 #pragma warning restore CS0618
 }
+

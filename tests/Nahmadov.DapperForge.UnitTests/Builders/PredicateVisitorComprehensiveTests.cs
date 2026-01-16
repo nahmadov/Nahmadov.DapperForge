@@ -3,8 +3,9 @@ using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using System.Linq.Expressions;
 
-using Nahmadov.DapperForge.Core.Builders;
-using Nahmadov.DapperForge.Core.Mapping;
+using Nahmadov.DapperForge.Core.Modeling.Builders;
+using Nahmadov.DapperForge.Core.Querying.Predicates;
+using Nahmadov.DapperForge.Core.Modeling.Mapping;
 using Nahmadov.DapperForge.SqlServer;
 using Xunit;
 
@@ -387,3 +388,5 @@ public class PredicateVisitorComprehensiveTests
 
     #endregion
 }
+
+

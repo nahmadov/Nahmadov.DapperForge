@@ -1,13 +1,12 @@
 using System.Reflection;
 
-using Nahmadov.DapperForge.Core.Builders;
-using Nahmadov.DapperForge.Core.Common;
-using Nahmadov.DapperForge.Core.Exceptions;
-using Nahmadov.DapperForge.Core.Extensions;
-using Nahmadov.DapperForge.Core.Mapping;
+using Nahmadov.DapperForge.Core.Modeling.Builders;
+using Nahmadov.DapperForge.Core.Context.Options;
+using Nahmadov.DapperForge.Core.Infrastructure.Exceptions;
+using Nahmadov.DapperForge.Core.Infrastructure.Extensions;
+using Nahmadov.DapperForge.Core.Modeling.Mapping;
 
 namespace Nahmadov.DapperForge.Core.Context;
-
 /// <summary>
 /// Handles model building and mapping retrieval for a <see cref="DapperDbContext"/>.
 /// </summary>
@@ -124,3 +123,6 @@ internal sealed class ContextModelManager(DapperDbContextOptions options, Type c
         }
     }
 }
+
+
+

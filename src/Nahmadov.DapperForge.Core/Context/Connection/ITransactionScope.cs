@@ -1,7 +1,6 @@
 using System.Data;
 
 namespace Nahmadov.DapperForge.Core.Context.Connection;
-
 /// <summary>
 /// Represents a scoped database transaction that ensures proper transaction lifecycle management.
 /// Transactions are automatically rolled back if not explicitly completed.
@@ -64,3 +63,4 @@ public interface ITransactionScope : IDisposable
     /// </summary>
     void Rollback();
 }
+

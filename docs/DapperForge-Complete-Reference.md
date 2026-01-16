@@ -283,16 +283,23 @@ DapperToolkit/
 
 ### Namespace Organization
 
-- `Nahmadov.DapperForge.Core` - Core abstractions
-- `Nahmadov.DapperForge.Core.Attributes` - Custom attributes
-- `Nahmadov.DapperForge.Core.Builders` - Fluent builders and SQL generation
+- `Nahmadov.DapperForge.Core.Abstractions` - Core interfaces and contracts
 - `Nahmadov.DapperForge.Core.Context` - DbContext and DapperSet implementations
-- `Nahmadov.DapperForge.Core.Exceptions` - Custom exceptions
-- `Nahmadov.DapperForge.Core.Extensions` - Extension methods
-- `Nahmadov.DapperForge.Core.Interfaces` - Core interfaces
-- `Nahmadov.DapperForge.Core.Mapping` - Entity mapping system
-- `Nahmadov.DapperForge.Core.Query` - Query execution infrastructure
-- `Nahmadov.DapperForge.Core.Validation` - Validation system
+- `Nahmadov.DapperForge.Core.Context.Connection` - Connection and transaction scopes
+- `Nahmadov.DapperForge.Core.Context.Options` - Context options and builders
+- `Nahmadov.DapperForge.Core.Infrastructure.Extensions` - Extension methods
+- `Nahmadov.DapperForge.Core.Infrastructure.Exceptions` - Custom exceptions
+- `Nahmadov.DapperForge.Core.Infrastructure.Utilities` - Shared utilities
+- `Nahmadov.DapperForge.Core.Modeling.Attributes` - Custom attributes
+- `Nahmadov.DapperForge.Core.Modeling.Builders` - Fluent model builders
+- `Nahmadov.DapperForge.Core.Modeling.Mapping` - Entity mapping system
+- `Nahmadov.DapperForge.Core.Modeling.Validation` - Validation system
+- `Nahmadov.DapperForge.Core.Querying.Execution` - Query execution pipeline
+- `Nahmadov.DapperForge.Core.Querying.Includes` - Include graph handling
+- `Nahmadov.DapperForge.Core.Querying.Predicates` - Expression to SQL translation
+- `Nahmadov.DapperForge.Core.Querying.Sql` - SQL generation utilities
+- `Nahmadov.DapperForge.Core.Mutations.Execution` - Mutation execution pipeline
+- `Nahmadov.DapperForge.Core.Mutations.Sql` - Mutation SQL builders
 - `Nahmadov.DapperForge.SqlServer` - SQL Server dialect
 - `Nahmadov.DapperForge.Oracle` - Oracle dialect
 
@@ -734,7 +741,7 @@ protected override void OnModelCreating(DapperModelBuilder modelBuilder)
 ```csharp
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
-using Nahmadov.DapperForge.Core.Attributes;
+using Nahmadov.DapperForge.Core.Modeling.Attributes;
 
 [Table("Customers", Schema = "dbo")]
 public class Customer

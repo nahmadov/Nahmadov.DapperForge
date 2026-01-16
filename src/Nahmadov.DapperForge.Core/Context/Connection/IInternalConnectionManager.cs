@@ -1,7 +1,6 @@
 using System.Data;
 
 namespace Nahmadov.DapperForge.Core.Context.Connection;
-
 /// <summary>
 /// Internal interface for automatic connection management.
 /// Handles connection lifecycle transparently for all database operations.
@@ -48,3 +47,4 @@ internal interface IInternalConnectionManager : IDisposable
     /// </summary>
     Task<bool> HealthCheckAsync();
 }
+

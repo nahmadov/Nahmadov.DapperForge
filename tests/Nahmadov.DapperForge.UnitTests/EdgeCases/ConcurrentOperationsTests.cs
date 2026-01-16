@@ -1,9 +1,9 @@
 using System.Collections.Concurrent;
 using System.Data;
-using Nahmadov.DapperForge.Core.Builders;
-using Nahmadov.DapperForge.Core.Common;
+using Nahmadov.DapperForge.Core.Modeling.Builders;
+using Nahmadov.DapperForge.Core.Context.Options;
 using Nahmadov.DapperForge.Core.Context;
-using Nahmadov.DapperForge.Core.Mapping;
+using Nahmadov.DapperForge.Core.Modeling.Mapping;
 using Nahmadov.DapperForge.SqlServer;
 using Nahmadov.DapperForge.UnitTests.Fakes;
 using Xunit;
@@ -430,3 +430,6 @@ public class ConcurrentOperationsTests
 
     #endregion
 }
+
+
+

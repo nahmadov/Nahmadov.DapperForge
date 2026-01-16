@@ -1,6 +1,6 @@
 using ConnectionSample;
 
-using Nahmadov.DapperForge.Core.Extensions;
+using Nahmadov.DapperForge.Core.Infrastructure.Extensions;
 using Nahmadov.DapperForge.Oracle.Extensions;
 using Nahmadov.DapperForge.SqlServer.Extensions;
 using Microsoft.Extensions.Configuration;
@@ -42,3 +42,4 @@ using var scope = host.Services.CreateScope();
 var runner = scope.ServiceProvider.GetRequiredService<SampleRunner>();
 
 await runner.RunAsync();
+

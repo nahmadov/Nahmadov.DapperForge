@@ -2,11 +2,12 @@ using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using System.Reflection;
 
-using Nahmadov.DapperForge.Core.Builders;
-using Nahmadov.DapperForge.Core.Common;
+using Nahmadov.DapperForge.Core.Modeling.Builders;
+using Nahmadov.DapperForge.Core.Querying.Sql;
+using Nahmadov.DapperForge.Core.Context.Options;
 using Nahmadov.DapperForge.Core.Context;
-using Nahmadov.DapperForge.Core.Interfaces;
-using Nahmadov.DapperForge.Core.Mapping;
+using Nahmadov.DapperForge.Core.Abstractions;
+using Nahmadov.DapperForge.Core.Modeling.Mapping;
 using Nahmadov.DapperForge.SqlServer;
 using Nahmadov.DapperForge.UnitTests.Fakes;
 using Xunit;
@@ -242,3 +243,6 @@ public class ModelBuilderIntegrationTests
         }
     }
 }
+
+
+

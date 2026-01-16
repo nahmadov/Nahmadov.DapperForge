@@ -1,6 +1,6 @@
 using Microsoft.Data.SqlClient;
 
-using Nahmadov.DapperForge.Core.Common;
+using Nahmadov.DapperForge.Core.Context.Options;
 using Nahmadov.DapperForge.Core.Context;
 
 namespace Nahmadov.DapperForge.SqlServer.Extensions;
@@ -23,3 +23,4 @@ public static class DapperSqlServerOptionsBuilderExtensions
         return builder;
     }
 }
+

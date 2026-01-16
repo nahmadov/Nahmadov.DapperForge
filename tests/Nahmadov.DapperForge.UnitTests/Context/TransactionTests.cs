@@ -3,8 +3,8 @@
 using System.Data;
 using System.Data.Common;
 
-using Nahmadov.DapperForge.Core.Common;
-using Nahmadov.DapperForge.Core.Exceptions;
+using Nahmadov.DapperForge.Core.Context.Options;
+using Nahmadov.DapperForge.Core.Infrastructure.Exceptions;
 using Nahmadov.DapperForge.UnitTests.Fakes;
 using Nahmadov.DapperForge.SqlServer;
 using Xunit;
@@ -423,3 +423,5 @@ public class TransactionTests
 
     #endregion
 }
+
+

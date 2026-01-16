@@ -1,4 +1,4 @@
-using Nahmadov.DapperForge.Core.Common;
+using Nahmadov.DapperForge.Core.Infrastructure.Utilities;
 
 using Xunit;
 
@@ -287,3 +287,5 @@ public class LruCacheTests
         Assert.Equal(1, factoryCallCount[4]); // Called once
     }
 }
+
+

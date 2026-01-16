@@ -2,7 +2,7 @@
 
 using System.Data;
 
-using Nahmadov.DapperForge.Core.Common;
+using Nahmadov.DapperForge.Core.Context.Options;
 using Nahmadov.DapperForge.UnitTests.Fakes;
 using Nahmadov.DapperForge.SqlServer;
 
@@ -64,3 +64,4 @@ public class DapperDbContextConnectionTests
         Assert.Equal(ConnectionState.Open, conn.State);
     }
 }
+

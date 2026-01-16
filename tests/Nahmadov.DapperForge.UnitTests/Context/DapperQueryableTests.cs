@@ -2,11 +2,12 @@ using System.Linq.Expressions;
 
 using Xunit;
 
-using Nahmadov.DapperForge.Core.Builders;
+using Nahmadov.DapperForge.Core.Modeling.Builders;
+using Nahmadov.DapperForge.Core.Querying.Sql;
 using Nahmadov.DapperForge.Core.Context;
-using Nahmadov.DapperForge.Core.Context.Execution.Query;
-using Nahmadov.DapperForge.Core.Interfaces;
-using Nahmadov.DapperForge.Core.Mapping;
+using Nahmadov.DapperForge.Core.Querying.Execution;
+using Nahmadov.DapperForge.Core.Abstractions;
+using Nahmadov.DapperForge.Core.Modeling.Mapping;
 using Nahmadov.DapperForge.Oracle;
 using Nahmadov.DapperForge.SqlServer;
 
@@ -514,7 +515,7 @@ namespace Nahmadov.DapperForge.UnitTests.Context;
     private class MockDapperDbContext : DapperDbContext
     {
         public MockDapperDbContext() 
-            : base(new Nahmadov.DapperForge.Core.Common.DapperDbContextOptions<MockDapperDbContext>
+            : base(new Nahmadov.DapperForge.Core.Context.Options.DapperDbContextOptions<MockDapperDbContext>
             {
                 ConnectionFactory = () => new Fakes.FakeDbConnection(),
                 Dialect = SqlServerDialect.Instance
@@ -523,3 +524,6 @@ namespace Nahmadov.DapperForge.UnitTests.Context;
         }
     }
 }
+
+
+

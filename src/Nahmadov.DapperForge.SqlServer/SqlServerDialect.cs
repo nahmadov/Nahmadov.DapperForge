@@ -1,6 +1,6 @@
 using System.Data;
 
-using Nahmadov.DapperForge.Core.Interfaces;
+using Nahmadov.DapperForge.Core.Abstractions;
 
 namespace Nahmadov.DapperForge.SqlServer;
 
@@ -61,3 +61,4 @@ public class SqlServerDialect : ISqlDialect
         return false;
     }
 }
+

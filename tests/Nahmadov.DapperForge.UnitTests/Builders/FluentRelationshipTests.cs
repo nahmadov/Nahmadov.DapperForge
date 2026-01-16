@@ -2,15 +2,15 @@ using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using System.Reflection;
 
-using Nahmadov.DapperForge.Core.Builders;
-using Nahmadov.DapperForge.Core.Common;
+using Nahmadov.DapperForge.Core.Modeling.Builders;
+using Nahmadov.DapperForge.Core.Context.Options;
 using Nahmadov.DapperForge.Core.Context;
-using Nahmadov.DapperForge.Core.Mapping;
+using Nahmadov.DapperForge.Core.Modeling.Mapping;
 using Nahmadov.DapperForge.SqlServer;
 using Nahmadov.DapperForge.UnitTests.Fakes;
 using Xunit;
 
-using ForeignKeyAttribute = Nahmadov.DapperForge.Core.Attributes.ForeignKeyAttribute;
+using ForeignKeyAttribute = Nahmadov.DapperForge.Core.Modeling.Attributes.ForeignKeyAttribute;
 
 namespace Nahmadov.DapperForge.UnitTests.Builders;
 
@@ -410,3 +410,6 @@ public class FluentRelationshipTests
 
     #endregion
 }
+
+
+

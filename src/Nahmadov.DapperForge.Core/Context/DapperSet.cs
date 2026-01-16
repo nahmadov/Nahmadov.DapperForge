@@ -1,15 +1,14 @@
 using System.Data;
 using System.Linq.Expressions;
 
-using Nahmadov.DapperForge.Core.Builders;
-using Nahmadov.DapperForge.Core.Context.Execution.Mutation;
-using Nahmadov.DapperForge.Core.Context.Execution.Query;
-using Nahmadov.DapperForge.Core.Exceptions;
-using Nahmadov.DapperForge.Core.Interfaces;
-using Nahmadov.DapperForge.Core.Mapping;
+using Nahmadov.DapperForge.Core.Mutations.Execution;
+using Nahmadov.DapperForge.Core.Querying.Execution;
+using Nahmadov.DapperForge.Core.Querying.Sql;
+using Nahmadov.DapperForge.Core.Infrastructure.Exceptions;
+using Nahmadov.DapperForge.Core.Abstractions;
+using Nahmadov.DapperForge.Core.Modeling.Mapping;
 
 namespace Nahmadov.DapperForge.Core.Context;
-
 /// <summary>
 /// Provides query and command operations for a specific entity type.
 /// </summary>
@@ -134,3 +133,4 @@ public sealed class DapperSet<TEntity> where TEntity : class
 
     #endregion
 }
+

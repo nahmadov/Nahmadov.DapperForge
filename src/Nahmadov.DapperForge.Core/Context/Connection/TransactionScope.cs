@@ -1,9 +1,8 @@
 using System.Data;
 
-using Nahmadov.DapperForge.Core.Exceptions;
+using Nahmadov.DapperForge.Core.Infrastructure.Exceptions;
 
 namespace Nahmadov.DapperForge.Core.Context.Connection;
-
 /// <summary>
 /// Scoped database transaction that ensures proper lifecycle management with automatic rollback.
 /// Owns a connection scope and disposes it when transaction completes.
@@ -319,3 +318,5 @@ internal sealed class TransactionScope : ITransactionScope
         }
     }
 }
+
+

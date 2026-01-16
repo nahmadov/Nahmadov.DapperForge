@@ -1,7 +1,7 @@
 using System.Data;
 
 using Nahmadov.DapperForge.Core.Context.Connection;
-using Nahmadov.DapperForge.Core.Exceptions;
+using Nahmadov.DapperForge.Core.Infrastructure.Exceptions;
 using Nahmadov.DapperForge.UnitTests.Fakes;
 
 using Xunit;
@@ -225,3 +225,4 @@ public class ConnectionScopeTests
         scope.Dispose();
     }
 }
+

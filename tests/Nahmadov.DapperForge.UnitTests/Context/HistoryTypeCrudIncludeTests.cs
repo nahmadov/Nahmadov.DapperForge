@@ -1,8 +1,8 @@
 using System.Collections.Generic;
 using System.Linq;
 
-using Nahmadov.DapperForge.Core.Builders;
-using Nahmadov.DapperForge.Core.Common;
+using Nahmadov.DapperForge.Core.Modeling.Builders;
+using Nahmadov.DapperForge.Core.Context.Options;
 using Nahmadov.DapperForge.Core.Context;
 using Nahmadov.DapperForge.SqlServer;
 using Nahmadov.DapperForge.UnitTests.Fakes;
@@ -144,3 +144,5 @@ public class HistoryTypeCrudIncludeTests
         Assert.Equal("Audit", result.HistoryType!.Name);
     }
 }
+
+

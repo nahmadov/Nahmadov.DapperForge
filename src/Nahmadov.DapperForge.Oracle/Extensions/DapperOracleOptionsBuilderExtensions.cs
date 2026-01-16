@@ -1,4 +1,4 @@
-using Nahmadov.DapperForge.Core.Common;
+using Nahmadov.DapperForge.Core.Context.Options;
 using Nahmadov.DapperForge.Core.Context;
 
 using Oracle.ManagedDataAccess.Client;
@@ -23,3 +23,4 @@ public static class DapperOracleOptionsBuilderExtensions
         return builder;
     }
 }
+

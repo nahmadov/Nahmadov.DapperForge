@@ -2,7 +2,7 @@ using System.Linq.Expressions;
 
 using Xunit;
 
-using Nahmadov.DapperForge.Core.Builders;
+using Nahmadov.DapperForge.Core.Querying.Predicates;
 
 namespace Nahmadov.DapperForge.UnitTests.Builders;
 
@@ -267,3 +267,4 @@ public sealed class ExpressionCacheKeyTests
         Assert.Equal(hash1, hash2);
     }
 }
+

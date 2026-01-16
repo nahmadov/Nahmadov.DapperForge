@@ -4,17 +4,16 @@ using System.Reflection;
 
 using Microsoft.Extensions.Logging;
 
-using Nahmadov.DapperForge.Core.Builders;
-using Nahmadov.DapperForge.Core.Common;
+using Nahmadov.DapperForge.Core.Modeling.Builders;
+using Nahmadov.DapperForge.Core.Context.Options;
 using Nahmadov.DapperForge.Core.Context.Connection;
-using Nahmadov.DapperForge.Core.Context.Utilities;
-using Nahmadov.DapperForge.Core.Exceptions;
-using Nahmadov.DapperForge.Core.Interfaces;
-using Nahmadov.DapperForge.Core.Mapping;
-using Nahmadov.DapperForge.Core.Query;
+using Nahmadov.DapperForge.Core.Infrastructure.Exceptions;
+using Nahmadov.DapperForge.Core.Abstractions;
+using Nahmadov.DapperForge.Core.Modeling.Mapping;
+using Nahmadov.DapperForge.Core.Querying.Execution;
+using Nahmadov.DapperForge.Core.Querying.Sql;
 
 namespace Nahmadov.DapperForge.Core.Context;
-
 /// <summary>
 /// Base class providing Dapper-based data access with entity mapping support.
 /// </summary>
@@ -409,3 +408,6 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
         }
     }
 }
+
+
+

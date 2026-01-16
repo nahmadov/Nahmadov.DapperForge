@@ -1,9 +1,8 @@
 using System.Data;
 
-using Nahmadov.DapperForge.Core.Exceptions;
+using Nahmadov.DapperForge.Core.Infrastructure.Exceptions;
 
 namespace Nahmadov.DapperForge.Core.Context.Connection;
-
 /// <summary>
 /// Scoped database connection that ensures proper lifecycle management.
 /// Automatically closes and returns connection to pool on disposal.
@@ -221,3 +220,5 @@ internal sealed class ConnectionScope(
         }
     }
 }
+
+

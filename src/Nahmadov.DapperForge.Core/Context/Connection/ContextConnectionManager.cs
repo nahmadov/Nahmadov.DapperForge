@@ -2,11 +2,10 @@ using System.Data;
 
 using Dapper;
 
-using Nahmadov.DapperForge.Core.Common;
-using Nahmadov.DapperForge.Core.Exceptions;
+using Nahmadov.DapperForge.Core.Context.Options;
+using Nahmadov.DapperForge.Core.Infrastructure.Exceptions;
 
 namespace Nahmadov.DapperForge.Core.Context.Connection;
-
 /// <summary>
 /// Manages automatic connection lifecycle with scope-based pattern.
 /// All connections are automatically acquired from factory and returned to pool after use.
@@ -343,3 +342,6 @@ internal sealed class ContextConnectionManager(
         }
     }
 }
+
+
+

@@ -1,5 +1,5 @@
-using Nahmadov.DapperForge.Core.Mapping;
-using Nahmadov.DapperForge.Core.Query;
+using Nahmadov.DapperForge.Core.Modeling.Mapping;
+using Nahmadov.DapperForge.Core.Querying.Includes;
 
 using Xunit;
 
@@ -292,3 +292,4 @@ public class IdentityCacheTests
         Assert.Same(entity, resolved); // Should return same instance without caching
     }
 }
+

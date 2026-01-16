@@ -545,7 +545,7 @@ public class SampleRunner(AppDapperDbContext db)
             txScope.Complete();
             Console.WriteLine("✗ Should not reach here - validation should have failed.");
         }
-        catch (Nahmadov.DapperForge.Core.Exceptions.DapperValidationException ex)
+        catch (Nahmadov.DapperForge.Core.Infrastructure.Exceptions.DapperValidationException ex)
         {
             // Automatic rollback (Complete() not called)
             Console.WriteLine("✓ Validation error caught and transaction automatically rolled back.");
@@ -598,3 +598,4 @@ public class SampleRunner(AppDapperDbContext db)
         }
     }
 }
+

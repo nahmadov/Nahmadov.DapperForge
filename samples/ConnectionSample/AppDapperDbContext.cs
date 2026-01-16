@@ -1,5 +1,5 @@
-using Nahmadov.DapperForge.Core.Builders;
-using Nahmadov.DapperForge.Core.Common;
+using Nahmadov.DapperForge.Core.Modeling.Builders;
+using Nahmadov.DapperForge.Core.Context.Options;
 using Nahmadov.DapperForge.Core.Context;
 
 namespace ConnectionSample;
@@ -55,3 +55,4 @@ public class AppDapperDbContext(DapperDbContextOptions<AppDapperDbContext> optio
         });
     }
 }
+

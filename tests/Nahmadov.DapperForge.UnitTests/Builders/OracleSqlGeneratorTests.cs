@@ -1,8 +1,9 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
-using Nahmadov.DapperForge.Core.Builders;
-using Nahmadov.DapperForge.Core.Mapping;
+using Nahmadov.DapperForge.Core.Modeling.Builders;
+using Nahmadov.DapperForge.Core.Querying.Sql;
+using Nahmadov.DapperForge.Core.Modeling.Mapping;
 using Nahmadov.DapperForge.Oracle;
 using Xunit;
 
@@ -47,3 +48,5 @@ public class OracleSqlGeneratorTests
         public string Name { get; set; } = string.Empty;
     }
 }
+
+

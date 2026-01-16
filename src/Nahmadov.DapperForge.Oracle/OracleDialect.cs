@@ -1,6 +1,6 @@
 using System.Data;
 
-using Nahmadov.DapperForge.Core.Interfaces;
+using Nahmadov.DapperForge.Core.Abstractions;
 
 namespace Nahmadov.DapperForge.Oracle;
 
@@ -70,3 +70,4 @@ public class OracleDialect : ISqlDialect
         return false;
     }
 }
+
