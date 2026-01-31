@@ -43,6 +43,12 @@ internal interface IInternalConnectionManager : IDisposable
     bool HasActiveTransaction { get; }
 
     /// <summary>
+    /// Gets the currently active transaction, if any.
+    /// Returns null if no transaction is active.
+    /// </summary>
+    IDbTransaction? GetActiveTransaction();
+
+    /// <summary>
     /// Performs health check on connection pool.
     /// </summary>
     Task<bool> HealthCheckAsync();

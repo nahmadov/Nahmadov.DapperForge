@@ -298,6 +298,23 @@ internal sealed class ContextConnectionManager(
     }
 
     /// <summary>
+    /// Gets the currently active transaction, if any.
+    /// Returns null if no transaction is active.
+    /// </summary>
+    public IDbTransaction? GetActiveTransaction()
+    {
+        _transactionSemaphore.Wait();
+        try
+        {
+            return _activeTransaction;
+        }
+        finally
+        {
+            _transactionSemaphore.Release();
+        }
+    }
+
+    /// <summary>
     /// Disposes the connection manager.
     /// Warns if an active transaction exists to prevent data loss.
     /// </summary>

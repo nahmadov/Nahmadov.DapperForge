@@ -45,40 +45,43 @@ internal sealed class QueryExecutor : IQueryExecutor
     public Task<IEnumerable<T>> QueryAsync<T>(string sql, object? param = null, IDbTransaction? transaction = null)
     {
         _logSql(sql);
+        var effectiveTransaction = transaction ?? _connectionManager.GetActiveTransaction();
         return ExecuteWithRetryAsync(async () =>
         {
             return await _connectionManager.ExecuteWithConnectionAsync(async connection =>
             {
                 var timeout = _options.CommandTimeoutSeconds;
-                return await connection.QueryAsync<T>(sql, param, transaction, commandTimeout: timeout).ConfigureAwait(false);
-            }, transaction).ConfigureAwait(false);
+                return await connection.QueryAsync<T>(sql, param, effectiveTransaction, commandTimeout: timeout).ConfigureAwait(false);
+            }, effectiveTransaction).ConfigureAwait(false);
         });
     }
 
     public Task<T?> QueryFirstOrDefaultAsync<T>(string sql, object? param = null, IDbTransaction? transaction = null)
     {
         _logSql(sql);
+        var effectiveTransaction = transaction ?? _connectionManager.GetActiveTransaction();
         return ExecuteWithRetryAsync(async () =>
         {
             return await _connectionManager.ExecuteWithConnectionAsync(async connection =>
             {
                 var timeout = _options.CommandTimeoutSeconds;
-                return await connection.QueryFirstOrDefaultAsync<T>(sql, param, transaction, commandTimeout: timeout).ConfigureAwait(false);
-            }, transaction).ConfigureAwait(false);
+                return await connection.QueryFirstOrDefaultAsync<T>(sql, param, effectiveTransaction, commandTimeout: timeout).ConfigureAwait(false);
+            }, effectiveTransaction).ConfigureAwait(false);
         });
     }
 
     public Task<IEnumerable<object>> QueryDynamicAsync(Type entityType, string sql, object? param = null, IDbTransaction? transaction = null)
     {
         _logSql(sql);
+        var effectiveTransaction = transaction ?? _connectionManager.GetActiveTransaction();
         return ExecuteWithRetryAsync(async () =>
         {
             return await _connectionManager.ExecuteWithConnectionAsync(async connection =>
             {
                 var timeout = _options.CommandTimeoutSeconds;
-                var results = await connection.QueryAsync(entityType, sql, param, transaction, commandTimeout: timeout).ConfigureAwait(false);
+                var results = await connection.QueryAsync(entityType, sql, param, effectiveTransaction, commandTimeout: timeout).ConfigureAwait(false);
                 return results.Cast<object>();
-            }, transaction).ConfigureAwait(false);
+            }, effectiveTransaction).ConfigureAwait(false);
         });
     }
 
@@ -91,14 +94,15 @@ internal sealed class QueryExecutor : IQueryExecutor
         IDbTransaction? transaction = null)
     {
         _logSql(sql);
+        var effectiveTransaction = transaction ?? _connectionManager.GetActiveTransaction();
         return ExecuteWithRetryAsync(async () =>
         {
             return await _connectionManager.ExecuteWithConnectionAsync(async connection =>
             {
                 var timeout = _options.CommandTimeoutSeconds;
-                var results = await connection.QueryAsync(sql, types, objs => map(objs), param: parameters, transaction: transaction, splitOn: splitOn, commandTimeout: timeout).ConfigureAwait(false);
+                var results = await connection.QueryAsync(sql, types, objs => map(objs), param: parameters, transaction: effectiveTransaction, splitOn: splitOn, commandTimeout: timeout).ConfigureAwait(false);
                 return results.ToList();
-            }, transaction).ConfigureAwait(false);
+            }, effectiveTransaction).ConfigureAwait(false);
         });
     }
 
@@ -124,13 +128,14 @@ internal sealed class QueryExecutor : IQueryExecutor
     public async Task<int> ExecuteAsync(string sql, object? param = null, IDbTransaction? transaction = null)
     {
         _logSql(sql);
+        var effectiveTransaction = transaction ?? _connectionManager.GetActiveTransaction();
 
         // No retry for mutations - they are NOT idempotent
         return await _connectionManager.ExecuteWithConnectionAsync(async connection =>
         {
             var timeout = _options.CommandTimeoutSeconds;
-            return await connection.ExecuteAsync(sql, param, transaction, commandTimeout: timeout).ConfigureAwait(false);
-        }, transaction).ConfigureAwait(false);
+            return await connection.ExecuteAsync(sql, param, effectiveTransaction, commandTimeout: timeout).ConfigureAwait(false);
+        }, effectiveTransaction).ConfigureAwait(false);
     }
 
     /// <summary>

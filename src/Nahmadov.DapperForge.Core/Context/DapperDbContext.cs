@@ -27,8 +27,7 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
     private readonly ConcurrentDictionary<Type, object> _sets = new();
     private IQueryExecutor? _queryExecutor;
     private static readonly ConcurrentDictionary<Type, int> _contextInstanceCounts = new();
-    private readonly Guid _instanceId = Guid.NewGuid();
-    private readonly object _legacyConnectionLock = new();
+    private readonly Lock _legacyConnectionLock = new();
     private IConnectionScope? _legacyConnectionScope;
 
     /// <summary>
