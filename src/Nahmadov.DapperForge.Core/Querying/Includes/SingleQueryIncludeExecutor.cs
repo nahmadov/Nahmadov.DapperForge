@@ -10,6 +10,7 @@ internal sealed class SingleQueryIncludeExecutor
 {
     private readonly DapperDbContext _context;
     private readonly IdentityCache _identityCache;
+    private readonly HashSet<(object Parent, string NavigationName, object Related)> _assignedRelationships = new();
 
     public SingleQueryIncludeExecutor(DapperDbContext context)
     {
@@ -127,7 +128,7 @@ internal sealed class SingleQueryIncludeExecutor
         return currentIndex;
     }
 
-    private static void AssignNavigation<TEntity>(TEntity root, IncludeNode node, object related)
+    private void AssignNavigation<TEntity>(TEntity root, IncludeNode node, object related)
         where TEntity : class
     {
         if (!node.IsCollection)
@@ -135,6 +136,11 @@ internal sealed class SingleQueryIncludeExecutor
             node.Navigation.SetValue(root, related);
             return;
         }
+
+        // Track relationship to prevent adding duplicates to collections
+        var relationshipKey = ((object)root, node.Navigation.Name, related);
+        if (!_assignedRelationships.Add(relationshipKey))
+            return; // Already assigned, skip to avoid duplicate in collection
 
         var current = node.Navigation.GetValue(root);
         if (current is null)
