@@ -75,8 +75,8 @@ internal sealed class SingleQueryPlanBuilder(ISqlDialect dialect, Func<Type, Ent
             : BuildReferenceJoin(node, parentContext, relatedMapping, alias);
 
         joinParts.Add(joinClause);
-        AppendSelectColumns(selectParts, alias, relatedMapping);
-        AddSplitOnColumn(splitOnColumns, alias, relatedMapping);
+        var splitColumn = AppendSelectColumns(selectParts, alias, relatedMapping);
+        splitOnColumns.Add(splitColumn);
 
         var currentContext = new JoinContext(alias, relatedMapping);
         foreach (var child in node.Children)
@@ -127,20 +127,17 @@ internal sealed class SingleQueryPlanBuilder(ISqlDialect dialect, Func<Type, Ent
         return $"LEFT JOIN {FormatTable(relatedMapping)} {_dialect.FormatTableAlias(alias)} ON {childFkColumn} = {parentPkColumn}";
     }
 
-    private void AppendSelectColumns(List<string> selectParts, string alias, EntityMapping mapping)
+    private string AppendSelectColumns(List<string> selectParts, string alias, EntityMapping mapping)
     {
+        string? firstColumnAlias = null;
         foreach (var pm in mapping.PropertyMappings)
         {
             var column = FormatColumn(alias, pm.ColumnName);
             var columnAlias = $"{alias}__{pm.Property.Name}";
+            firstColumnAlias ??= columnAlias;
             selectParts.Add($"{column} AS {_dialect.QuoteIdentifier(columnAlias)}");
         }
-    }
-
-    private static void AddSplitOnColumn(List<string> splitOnColumns, string alias, EntityMapping mapping)
-    {
-        var keyProp = mapping.KeyProperties.First();
-        splitOnColumns.Add($"{alias}__{keyProp.Name}");
+        return firstColumnAlias!;
     }
 
     private string BuildFinalSql(
