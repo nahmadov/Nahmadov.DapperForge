@@ -2,6 +2,7 @@ using System.Data;
 using System.Linq.Expressions;
 
 using Nahmadov.DapperForge.Core.Mutations.Execution;
+using Nahmadov.DapperForge.Core.Mutations.Bulk;
 using Nahmadov.DapperForge.Core.Querying.Execution;
 using Nahmadov.DapperForge.Core.Querying.Sql;
 using Nahmadov.DapperForge.Core.Infrastructure.Exceptions;
@@ -19,6 +20,7 @@ public sealed class DapperSet<TEntity> where TEntity : class
     private readonly EntityMapping _mapping;
     private readonly EntityQueryExecutor<TEntity> _queryExecutor;
     private readonly EntityMutationExecutor<TEntity> _mutationExecutor;
+    private BulkMutationExecutor<TEntity>? _bulkExecutor;
 
     internal DapperSet(DapperDbContext context, SqlGenerator<TEntity> generator, EntityMapping mapping)
     {
@@ -27,6 +29,25 @@ public sealed class DapperSet<TEntity> where TEntity : class
         _mapping = mapping;
         _queryExecutor = new EntityQueryExecutor<TEntity>(context, generator, mapping);
         _mutationExecutor = new EntityMutationExecutor<TEntity>(context, generator, mapping);
+    }
+
+    private BulkMutationExecutor<TEntity> BulkExecutor
+    {
+        get
+        {
+            if (_bulkExecutor is null)
+            {
+                if (_generator.Dialect is not IBulkSqlDialect bulkDialect)
+                {
+                    throw new DapperConfigurationException(
+                        typeof(TEntity).Name,
+                        $"Dialect '{_generator.DialectName}' does not support bulk operations. " +
+                        "Use a dialect that implements IBulkSqlDialect.");
+                }
+                _bulkExecutor = new BulkMutationExecutor<TEntity>(_context, bulkDialect, _mapping);
+            }
+            return _bulkExecutor;
+        }
     }
 
     #region Query
@@ -130,6 +151,52 @@ public sealed class DapperSet<TEntity> where TEntity : class
     /// </summary>
     public async Task<int> DeleteAsync(object where, bool allowMultiple = false, int? expectedRows = null, IDbTransaction? transaction = null)
         => await _mutationExecutor.DeleteAsync(where, allowMultiple, expectedRows, transaction).ConfigureAwait(false);
+
+    #endregion
+
+    #region Bulk Operations
+
+    /// <summary>
+    /// Inserts multiple entities in optimized batches.
+    /// </summary>
+    /// <param name="entities">Entities to insert.</param>
+    /// <param name="options">Optional bulk insert configuration.</param>
+    /// <param name="transaction">Optional transaction.</param>
+    /// <returns>Result containing affected row count and execution statistics.</returns>
+    public Task<BulkOperationResult> BulkInsertAsync(
+        IEnumerable<TEntity> entities,
+        BulkInsertOptions? options = null,
+        IDbTransaction? transaction = null)
+        => BulkExecutor.BulkInsertAsync(entities, options, transaction);
+
+    /// <summary>
+    /// Performs an upsert (insert or update) operation on multiple entities.
+    /// Matches on primary/alternate key by default.
+    /// </summary>
+    /// <param name="entities">Entities to merge.</param>
+    /// <param name="options">Optional merge configuration.</param>
+    /// <param name="transaction">Optional transaction.</param>
+    /// <returns>Result containing affected row count and execution statistics.</returns>
+    public Task<BulkMergeResult> BulkMergeAsync(
+        IEnumerable<TEntity> entities,
+        BulkMergeOptions? options = null,
+        IDbTransaction? transaction = null)
+        => BulkExecutor.BulkMergeAsync(entities, options, transaction);
+
+    /// <summary>
+    /// Performs an upsert operation using custom match columns.
+    /// </summary>
+    /// <param name="entities">Entities to merge.</param>
+    /// <param name="matchColumns">Column names to use for matching existing records.</param>
+    /// <param name="transaction">Optional transaction.</param>
+    /// <returns>Result containing affected row count and execution statistics.</returns>
+    public Task<BulkMergeResult> BulkMergeAsync(
+        IEnumerable<TEntity> entities,
+        IReadOnlyList<string> matchColumns,
+        IDbTransaction? transaction = null)
+        => BulkExecutor.BulkMergeAsync(entities,
+            new BulkMergeOptions { MatchColumns = matchColumns },
+            transaction);
 
     #endregion
 }

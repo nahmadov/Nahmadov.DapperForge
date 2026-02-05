@@ -1,4 +1,5 @@
 using System.Data;
+using System.Text;
 
 using Nahmadov.DapperForge.Core.Abstractions;
 
@@ -7,7 +8,7 @@ namespace Nahmadov.DapperForge.SqlServer;
 /// <summary>
 /// SQL Server-specific dialect implementation.
 /// </summary>
-public class SqlServerDialect : ISqlDialect
+public class SqlServerDialect : ISqlDialect, IBulkSqlDialect
 {
     public static readonly SqlServerDialect Instance = new();
 
@@ -60,5 +61,90 @@ public class SqlServerDialect : ISqlDialect
         dbType = default;
         return false;
     }
+
+    #region IBulkSqlDialect Implementation
+
+    /// <inheritdoc />
+    public int MaxParametersPerStatement => 2100;
+
+    /// <inheritdoc />
+    public string BuildBulkInsert(
+        string tableName,
+        IReadOnlyList<string> columns,
+        int rowCount,
+        Func<int, string, string> parameterNameGenerator)
+    {
+        if (rowCount == 0) return string.Empty;
+
+        var columnList = string.Join(", ", columns.Select(QuoteIdentifier));
+        var valueRows = new List<string>(rowCount);
+
+        for (int i = 0; i < rowCount; i++)
+        {
+            var values = columns.Select(c => FormatParameter(parameterNameGenerator(i, c)));
+            valueRows.Add($"({string.Join(", ", values)})");
+        }
+
+        return $"INSERT INTO {tableName} ({columnList}) VALUES {string.Join(", ", valueRows)}";
+    }
+
+    /// <inheritdoc />
+    public string BuildMerge(
+        string tableName,
+        IReadOnlyList<string> keyColumns,
+        IReadOnlyList<string> insertColumns,
+        IReadOnlyList<string> updateColumns,
+        int rowCount,
+        Func<int, string, string> parameterNameGenerator,
+        MergeMode mode)
+    {
+        if (rowCount == 0) return string.Empty;
+
+        var sb = new StringBuilder();
+
+        // Build source VALUES
+        var sourceValues = BuildSourceValues(insertColumns, rowCount, parameterNameGenerator);
+        var sourceColumns = string.Join(", ", insertColumns.Select(QuoteIdentifier));
+
+        sb.AppendLine($"MERGE INTO {tableName} AS target");
+        sb.AppendLine($"USING (VALUES {sourceValues}) AS source ({sourceColumns})");
+        sb.Append("ON ");
+        sb.AppendLine(string.Join(" AND ",
+            keyColumns.Select(k => $"target.{QuoteIdentifier(k)} = source.{QuoteIdentifier(k)}")));
+
+        if (mode != MergeMode.UpdateOnly)
+        {
+            sb.AppendLine("WHEN NOT MATCHED THEN");
+            sb.AppendLine($"  INSERT ({sourceColumns})");
+            sb.AppendLine($"  VALUES ({string.Join(", ", insertColumns.Select(c => $"source.{QuoteIdentifier(c)}"))})");
+        }
+
+        if (mode != MergeMode.InsertOnly && updateColumns.Count > 0)
+        {
+            sb.AppendLine("WHEN MATCHED THEN");
+            sb.Append("  UPDATE SET ");
+            sb.AppendLine(string.Join(", ",
+                updateColumns.Select(c => $"target.{QuoteIdentifier(c)} = source.{QuoteIdentifier(c)}")));
+        }
+
+        sb.Append(';');
+        return sb.ToString();
+    }
+
+    private string BuildSourceValues(
+        IReadOnlyList<string> columns,
+        int rowCount,
+        Func<int, string, string> parameterNameGenerator)
+    {
+        var rows = new List<string>(rowCount);
+        for (int i = 0; i < rowCount; i++)
+        {
+            var values = columns.Select(c => FormatParameter(parameterNameGenerator(i, c)));
+            rows.Add($"({string.Join(", ", values)})");
+        }
+        return string.Join(", ", rows);
+    }
+
+    #endregion
 }
 

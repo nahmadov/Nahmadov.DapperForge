@@ -1,4 +1,5 @@
-using System.Linq;
+using Nahmadov.DapperForge.Core.Abstractions;
+using Nahmadov.DapperForge.Core.Mutations.Bulk;
 
 namespace ConnectionSample;
 
@@ -19,6 +20,7 @@ public class SampleRunner(AppDapperDbContext db)
         await ShowIncludeExamplesAsync();
         await ShowAlternateKeyExamplesAsync();
         await ShowTransactionExamplesAsync();
+        await ShowBulkOperationsExamplesAsync();
     }
 
     private async Task<(int AdaId, int GraceId)> SeedCustomersAsync()
@@ -596,6 +598,166 @@ public class SampleRunner(AppDapperDbContext db)
         {
             Console.WriteLine("Skipped: Ada Lovelace customer not found.");
         }
+    }
+
+    private async Task ShowBulkOperationsExamplesAsync()
+    {
+        Console.WriteLine("\n=== Bulk Operations Examples ===\n");
+
+        await Example_BulkInsertAsync();
+        await Example_BulkMergeAsync();
+        await Example_BulkInsertWithTransactionAsync();
+    }
+
+    private async Task Example_BulkInsertAsync()
+    {
+        Console.WriteLine("Example 1: Bulk Insert");
+        Console.WriteLine("Inserting multiple products at once...");
+
+        const int tenantId = 99; // Use a separate tenant for bulk examples
+
+        // Create a batch of products
+        var products = Enumerable.Range(1, 10).Select(i => new Product
+        {
+            TenantId = tenantId,
+            ProductCode = $"BULK-{i:D3}",
+            Name = $"Bulk Product {i}",
+            Description = $"Product created by bulk insert example",
+            Price = 9.99m + i,
+            StockQuantity = i * 10,
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow
+        }).ToList();
+
+        // First, clean up any existing products from previous runs
+        var existingProducts = await _db.Products.WhereAsync(p => p.TenantId == tenantId);
+        foreach (var existing in existingProducts)
+        {
+            await _db.Products.DeleteAsync(new { existing.TenantId, existing.ProductCode });
+        }
+
+        // Perform bulk insert
+        var result = await _db.Products.BulkInsertAsync(products);
+
+        Console.WriteLine($"  ✓ Bulk inserted {result.TotalAffected} products in {result.BatchCount} batch(es)");
+        Console.WriteLine($"    Elapsed time: {result.ElapsedTime.TotalMilliseconds:F2}ms");
+
+        // Verify the insert
+        var insertedProducts = await _db.Products.WhereAsync(p => p.TenantId == tenantId);
+        Console.WriteLine($"  ✓ Verified: {insertedProducts.Count()} products found in database");
+    }
+
+    private async Task Example_BulkMergeAsync()
+    {
+        Console.WriteLine("\nExample 2: Bulk Merge (Upsert)");
+        Console.WriteLine("Upserting products - updates existing, inserts new...");
+
+        const int tenantId = 99;
+
+        // Prepare products: some existing (to update), some new (to insert)
+        var productsToMerge = new List<Product>
+        {
+            // This should UPDATE (already exists from bulk insert)
+            new Product
+            {
+                TenantId = tenantId,
+                ProductCode = "BULK-001",
+                Name = "Updated Bulk Product 1",
+                Description = "This product was updated by merge",
+                Price = 19.99m,
+                StockQuantity = 999,
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow
+            },
+            // This should INSERT (new product)
+            new Product
+            {
+                TenantId = tenantId,
+                ProductCode = "MERGE-NEW-001",
+                Name = "New Merged Product",
+                Description = "This product was inserted by merge",
+                Price = 29.99m,
+                StockQuantity = 50,
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow
+            }
+        };
+
+        // Perform bulk merge with custom match columns
+        var result = await _db.Products.BulkMergeAsync(productsToMerge, new BulkMergeOptions
+        {
+            MatchColumns = new[] { "TenantId", "ProductCode" },
+            Mode = MergeMode.InsertOrUpdate
+        });
+
+        Console.WriteLine($"  ✓ Bulk merged {result.TotalAffected} products in {result.BatchCount} batch(es)");
+        Console.WriteLine($"    Elapsed time: {result.ElapsedTime.TotalMilliseconds:F2}ms");
+
+        // Verify the merge
+        var updatedProduct = await _db.Products.FirstOrDefaultAsync(p =>
+            p.TenantId == tenantId && p.ProductCode == "BULK-001");
+        if (updatedProduct != null)
+        {
+            Console.WriteLine($"  ✓ Updated product price: ${updatedProduct.Price}, stock: {updatedProduct.StockQuantity}");
+        }
+
+        var newProduct = await _db.Products.FirstOrDefaultAsync(p =>
+            p.TenantId == tenantId && p.ProductCode == "MERGE-NEW-001");
+        if (newProduct != null)
+        {
+            Console.WriteLine($"  ✓ New product inserted: {newProduct.Name}");
+        }
+    }
+
+    private async Task Example_BulkInsertWithTransactionAsync()
+    {
+        Console.WriteLine("\nExample 3: Bulk Insert with Transaction");
+        Console.WriteLine("Performing bulk insert within a transaction...");
+
+        const int tenantId = 100; // Different tenant for transaction example
+
+        using var txScope = await _db.BeginTransactionScopeAsync();
+        try
+        {
+            // Create products
+            var products = Enumerable.Range(1, 5).Select(i => new Product
+            {
+                TenantId = tenantId,
+                ProductCode = $"TX-BULK-{i:D3}",
+                Name = $"Transaction Bulk Product {i}",
+                Price = 49.99m,
+                StockQuantity = 100,
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow
+            }).ToList();
+
+            // Bulk insert within transaction
+            var result = await _db.Products.BulkInsertAsync(
+                products,
+                new BulkInsertOptions { BatchSize = 3 },
+                txScope.Transaction);
+
+            Console.WriteLine($"  - Bulk inserted {result.TotalAffected} products (not yet committed)");
+
+            // Commit the transaction
+            txScope.Complete();
+            Console.WriteLine("  ✓ Transaction committed successfully");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"  ✗ Transaction rolled back: {ex.Message}");
+        }
+
+        // Verify
+        var txProducts = await _db.Products.WhereAsync(p => p.TenantId == tenantId);
+        Console.WriteLine($"  ✓ Verified: {txProducts.Count()} products found after transaction");
+
+        // Clean up
+        foreach (var p in txProducts)
+        {
+            await _db.Products.DeleteAsync(new { p.TenantId, p.ProductCode });
+        }
+        Console.WriteLine("  - Cleaned up transaction test products");
     }
 }
 

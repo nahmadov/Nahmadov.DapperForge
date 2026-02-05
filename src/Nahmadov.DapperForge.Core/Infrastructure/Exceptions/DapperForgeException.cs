@@ -309,6 +309,56 @@ public enum OperationType
     Delete,
 
     /// <summary>Query/Select operation.</summary>
-    Query
+    Query,
+
+    /// <summary>Bulk insert operation.</summary>
+    BulkInsert,
+
+    /// <summary>Bulk merge (upsert) operation.</summary>
+    BulkMerge
+}
+
+/// <summary>
+/// Exception thrown when one or more entities fail validation during bulk operations.
+/// </summary>
+public class DapperBulkValidationException : DapperForgeException
+{
+    /// <summary>
+    /// Gets the name of the entity type being validated.
+    /// </summary>
+    public string EntityName { get; }
+
+    /// <summary>
+    /// Gets the validation errors indexed by entity position in the input collection.
+    /// </summary>
+    public IReadOnlyDictionary<int, IReadOnlyList<string>> EntityErrors { get; }
+
+    /// <summary>
+    /// Initializes a new instance of <see cref="DapperBulkValidationException"/>.
+    /// </summary>
+    /// <param name="entityName">Name of the entity type that failed validation.</param>
+    /// <param name="entityErrors">Dictionary mapping entity index to list of validation errors.</param>
+    public DapperBulkValidationException(
+        string entityName,
+        IReadOnlyDictionary<int, IReadOnlyList<string>> entityErrors)
+        : base(FormatMessage(entityName, entityErrors))
+    {
+        EntityName = entityName;
+        EntityErrors = entityErrors;
+    }
+
+    private static string FormatMessage(
+        string entityName,
+        IReadOnlyDictionary<int, IReadOnlyList<string>> errors)
+    {
+        var count = errors.Count;
+        var details = string.Join("\n", errors.Take(5).Select(kvp =>
+            $"  [{kvp.Key}]: {string.Join(", ", kvp.Value)}"));
+
+        var moreText = count > 5 ? $"\n  ... and {count - 5} more" : "";
+
+        return $"Bulk validation failed for entity '{entityName}': " +
+               $"{count} entit{(count == 1 ? "y" : "ies")} failed validation.\n{details}{moreText}";
+    }
 }
 
