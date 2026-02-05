@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using System.Reflection;
 
 namespace Nahmadov.DapperForge.Core.Querying.Includes;
@@ -12,9 +13,9 @@ internal sealed class IncludeTree
 
     public bool HasIncludes => _roots.Count > 0;
 
-    public IncludeNode AddRoot(PropertyInfo navigation, Type relatedType, bool isCollection)
+    public IncludeNode AddRoot(PropertyInfo navigation, Type relatedType, bool isCollection, LambdaExpression? filter = null)
     {
-        var node = new IncludeNode(navigation, relatedType, isCollection);
+        var node = new IncludeNode(navigation, relatedType, isCollection, filter);
         _roots.Add(node);
         return node;
     }
@@ -37,23 +38,25 @@ internal sealed class IncludeNode
 {
     private readonly List<IncludeNode> _children = [];
 
-    public IncludeNode(PropertyInfo navigation, Type relatedType, bool isCollection)
+    public IncludeNode(PropertyInfo navigation, Type relatedType, bool isCollection, LambdaExpression? filter = null)
     {
         Navigation = navigation;
         RelatedType = relatedType;
         IsCollection = isCollection;
+        Filter = filter;
     }
 
     public PropertyInfo Navigation { get; }
     public Type RelatedType { get; }
     public bool IsCollection { get; }
+    public LambdaExpression? Filter { get; }
 
     public IReadOnlyList<IncludeNode> Children => _children;
     public bool HasChildren => _children.Count > 0;
 
-    public IncludeNode AddChild(PropertyInfo navigation, Type relatedType, bool isCollection)
+    public IncludeNode AddChild(PropertyInfo navigation, Type relatedType, bool isCollection, LambdaExpression? filter = null)
     {
-        var node = new IncludeNode(navigation, relatedType, isCollection);
+        var node = new IncludeNode(navigation, relatedType, isCollection, filter);
         _children.Add(node);
         return node;
     }

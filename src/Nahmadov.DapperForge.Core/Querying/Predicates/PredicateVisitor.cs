@@ -146,9 +146,10 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
             return node;
         }
 
-        if (node.Expression is ConstantExpression closure)
+        // Handle any closure-based expression (direct or nested like capturedObj.Property)
+        if (IsClosureBasedExpression(node))
         {
-            var value = ExpressionEvaluator.GetValueFromClosure(closure.Value, node.Member);
+            var value = ExpressionEvaluator.Evaluate(node);
 
             if (value is bool b)
             {
@@ -167,6 +168,18 @@ public sealed class PredicateVisitor<TEntity> : ExpressionVisitor
         }
 
         return base.VisitMember(node);
+    }
+
+    /// <summary>
+    /// Checks if the expression chain leads to a closure constant (captured variable).
+    /// </summary>
+    private static bool IsClosureBasedExpression(Expression? expr)
+    {
+        while (expr is MemberExpression member)
+        {
+            expr = member.Expression;
+        }
+        return expr is ConstantExpression;
     }
 
     /// <summary>

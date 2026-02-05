@@ -101,7 +101,16 @@ internal sealed class SingleQueryPlanBuilder(ISqlDialect dialect, Func<Type, Ent
         var parentFkColumn = FormatColumn(parentContext.Alias, fkMapping.ColumnName);
         var relatedPkColumn = FormatColumn(alias, fk.PrincipalKeyColumnName);
 
-        return $"LEFT JOIN {FormatTable(relatedMapping)} {_dialect.FormatTableAlias(alias)} ON {relatedPkColumn} = {parentFkColumn}";
+        var joinCondition = $"{relatedPkColumn} = {parentFkColumn}";
+
+        // Add filter condition if present
+        if (node.Filter is not null)
+        {
+            var filterSql = TranslateFilter(node.Filter, relatedMapping, alias);
+            joinCondition += $" AND {filterSql}";
+        }
+
+        return $"LEFT JOIN {FormatTable(relatedMapping)} {_dialect.FormatTableAlias(alias)} ON {joinCondition}";
     }
 
     private string BuildCollectionJoin(
@@ -124,7 +133,16 @@ internal sealed class SingleQueryPlanBuilder(ISqlDialect dialect, Func<Type, Ent
         var childFkColumn = FormatColumn(alias, childFkMapping.ColumnName);
         var parentPkColumn = FormatColumn(parentContext.Alias, parentKeyMapping.ColumnName);
 
-        return $"LEFT JOIN {FormatTable(relatedMapping)} {_dialect.FormatTableAlias(alias)} ON {childFkColumn} = {parentPkColumn}";
+        var joinCondition = $"{childFkColumn} = {parentPkColumn}";
+
+        // Add filter condition if present
+        if (node.Filter is not null)
+        {
+            var filterSql = TranslateFilter(node.Filter, relatedMapping, alias);
+            joinCondition += $" AND {filterSql}";
+        }
+
+        return $"LEFT JOIN {FormatTable(relatedMapping)} {_dialect.FormatTableAlias(alias)} ON {joinCondition}";
     }
 
     private string AppendSelectColumns(List<string> selectParts, string alias, EntityMapping mapping)
@@ -181,6 +199,12 @@ internal sealed class SingleQueryPlanBuilder(ISqlDialect dialect, Func<Type, Ent
             return _dialect.QuoteIdentifier(mapping.TableName);
 
         return $"{_dialect.QuoteIdentifier(mapping.Schema)}.{_dialect.QuoteIdentifier(mapping.TableName)}";
+    }
+
+    private string TranslateFilter(System.Linq.Expressions.LambdaExpression filter, EntityMapping mapping, string alias)
+    {
+        var translator = new IncludeFilterTranslator(_dialect, mapping, alias);
+        return translator.Translate(filter);
     }
 
     private sealed record JoinContext(string Alias, EntityMapping Mapping);

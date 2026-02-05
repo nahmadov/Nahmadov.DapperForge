@@ -121,9 +121,9 @@ internal sealed class DapperQueryable<TEntity> : IDapperQueryable<TEntity> where
     {
         ArgumentNullException.ThrowIfNull(navigationSelector);
 
-        var (navigation, relatedType, isCollection) = ExtractNavigationInfo(navigationSelector.Body);
+        var (navigation, relatedType, isCollection, filter) = ExtractNavigationInfo(navigationSelector.Body);
 
-        _lastIncludeNode = _includeTree.AddRoot(navigation, relatedType, isCollection);
+        _lastIncludeNode = _includeTree.AddRoot(navigation, relatedType, isCollection, filter);
 
         return new IncludableQueryable<TEntity, TProperty>(this);
     }
@@ -137,23 +137,23 @@ internal sealed class DapperQueryable<TEntity> : IDapperQueryable<TEntity> where
         if (_lastIncludeNode is null)
             throw new InvalidOperationException("ThenInclude must be called after Include.");
 
-        var (navigation, relatedType, isCollection) = ExtractNavigationInfo(navigationSelector.Body);
+        var (navigation, relatedType, isCollection, filter) = ExtractNavigationInfo(navigationSelector.Body);
 
-        _lastIncludeNode = _lastIncludeNode.AddChild(navigation, relatedType, isCollection);
+        _lastIncludeNode = _lastIncludeNode.AddChild(navigation, relatedType, isCollection, filter);
 
         return new IncludableQueryable<TEntity, TNextProperty>(this);
     }
 
-    private static (PropertyInfo navigation, Type relatedType, bool isCollection) ExtractNavigationInfo(Expression body)
+    private static (PropertyInfo navigation, Type relatedType, bool isCollection, LambdaExpression? filter) ExtractNavigationInfo(Expression body)
     {
-        var navigation = ExtractProperty(body);
-        var isCollection = CollectionHelper.IsCollectionType(navigation.PropertyType);
+        var result = ExtractPropertyWithFilter(body);
+        var isCollection = CollectionHelper.IsCollectionType(result.Property.PropertyType);
 
         var relatedType = isCollection
-            ? CollectionHelper.GetElementType(navigation.PropertyType, navigation.Name)
-            : navigation.PropertyType;
+            ? CollectionHelper.GetElementType(result.Property.PropertyType, result.Property.Name)
+            : result.Property.PropertyType;
 
-        return (navigation, relatedType, isCollection);
+        return (result.Property, relatedType, isCollection, result.Filter);
     }
 
     #endregion
@@ -232,14 +232,68 @@ internal sealed class DapperQueryable<TEntity> : IDapperQueryable<TEntity> where
 
     #region Helpers
 
-    private static PropertyInfo ExtractProperty(Expression body)
+    private static IncludeExpressionResult ExtractPropertyWithFilter(Expression body)
     {
         return body switch
         {
-            MemberExpression { Member: PropertyInfo pi } => pi,
-            UnaryExpression { Operand: MemberExpression { Member: PropertyInfo pi2 } } => pi2,
-            _ => throw new NotSupportedException($"Expression '{body}' is not a property access.")
+            MemberExpression { Member: PropertyInfo pi } =>
+                new IncludeExpressionResult { Property = pi },
+
+            UnaryExpression { Operand: MemberExpression { Member: PropertyInfo pi2 } } =>
+                new IncludeExpressionResult { Property = pi2 },
+
+            MethodCallExpression methodCall =>
+                ExtractFromMethodCall(methodCall),
+
+            _ => throw new NotSupportedException($"Expression '{body}' is not supported.")
         };
+    }
+
+    private static IncludeExpressionResult ExtractFromMethodCall(MethodCallExpression methodCall)
+    {
+        // Handle Where() method - extract both property and filter predicate
+        if (methodCall.Method.Name == "Where" && methodCall.Arguments.Count >= 2)
+        {
+            var source = methodCall.Arguments[0];
+            var predicate = methodCall.Arguments[1];
+
+            // Extract the lambda from the predicate
+            var filter = predicate switch
+            {
+                UnaryExpression { Operand: LambdaExpression lambda } => lambda,
+                LambdaExpression lambda => lambda,
+                _ => null
+            };
+
+            // Get the property from the source
+            if (source is MemberExpression { Member: PropertyInfo pi })
+            {
+                return new IncludeExpressionResult { Property = pi, Filter = filter };
+            }
+
+            // Handle chained calls like .Where().Where()
+            if (source is MethodCallExpression nestedCall)
+            {
+                var nested = ExtractFromMethodCall(nestedCall);
+                // Use the innermost filter (closest to collection) or combine if needed
+                return new IncludeExpressionResult { Property = nested.Property, Filter = filter ?? nested.Filter };
+            }
+        }
+
+        // Fallback for other method calls (Select, OrderBy, etc.)
+        var arg = methodCall.Arguments.FirstOrDefault() ?? methodCall.Object;
+
+        if (arg is MemberExpression { Member: PropertyInfo pi2 })
+        {
+            return new IncludeExpressionResult { Property = pi2 };
+        }
+
+        if (arg is MethodCallExpression nestedMethodCall)
+        {
+            return ExtractFromMethodCall(nestedMethodCall);
+        }
+
+        throw new NotSupportedException($"Cannot extract property from '{methodCall}'.");
     }
 
     // Used by tests via reflection
