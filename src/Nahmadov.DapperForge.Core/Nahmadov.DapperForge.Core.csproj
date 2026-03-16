@@ -5,6 +5,15 @@
     <Title>DapperForge Core</Title>
     <Description>Core abstractions, helpers and mapping utilities for DapperForge data access.</Description>
     <PackageTags>dapper toolkit orm mapping sqlgenerator</PackageTags>
+    <PackageReleaseNotes>
+Unreleased:
+- Unified expression translation: all SQL predicate translation is now handled by a single SqlPredicateTranslator (non-generic, alias/paramPrefix-configurable). PredicateVisitor&lt;TEntity&gt; is a thin typed wrapper. IncludeFilterTranslator removed.
+- Fix: AsSplitQuery Include/ThenInclude Where filters were silently ignored; now applied as parameterised AND clauses in every generated IN-query.
+
+v2.2.0:
+- BulkInsertAsync and BulkMergeAsync with automatic per-dialect batching.
+- Include/ThenInclude now accept a Where filter predicate.
+    </PackageReleaseNotes>
     <IsPackable>true</IsPackable>
 
   </PropertyGroup>

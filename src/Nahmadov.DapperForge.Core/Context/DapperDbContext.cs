@@ -137,6 +137,17 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
         return QueryExecutor.QueryFirstOrDefaultAsync<T>(sql, param, transaction);
     }
 
+    /// <summary>
+    /// Executes a multi-type mapping query used internally by single-query Include operations.
+    /// </summary>
+    /// <typeparam name="TEntity">The root entity type to return.</typeparam>
+    /// <param name="sql">The SQL query string.</param>
+    /// <param name="types">Ordered array of types to map from the result set (used for Dapper multi-mapping).</param>
+    /// <param name="parameters">Query parameters.</param>
+    /// <param name="splitOn">Comma-separated column names at which Dapper splits the result into separate types.</param>
+    /// <param name="map">Callback that receives the per-row array of mapped objects and returns the root entity.</param>
+    /// <param name="transaction">Optional transaction to enlist in.</param>
+    /// <returns>A list of root entities with related entities hydrated.</returns>
     public Task<List<TEntity?>> QueryWithTypesAsync<TEntity>(string sql, Type[] types, object parameters, string splitOn, Func<object?[], TEntity?> map, IDbTransaction? transaction = null)
     {
         return QueryExecutor.QueryWithTypesAsync(sql, types, parameters, splitOn, map, transaction);
@@ -158,12 +169,21 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
         return _connectionManager.CreateConnectionScope();
     }
 
+    /// <summary>
+    /// Begins a database transaction with the default isolation level (ReadCommitted).
+    /// </summary>
+    /// <returns>An <see cref="IDbTransaction"/> wrapping the underlying transaction scope.</returns>
     [Obsolete("Use BeginTransactionScopeAsync() instead for better resource management.", false)]
     public async Task<IDbTransaction> BeginTransactionAsync()
     {
         return await BeginTransactionAsync(IsolationLevel.ReadCommitted).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Begins a database transaction with the specified isolation level.
+    /// </summary>
+    /// <param name="isolationLevel">The isolation level for the transaction.</param>
+    /// <returns>An <see cref="IDbTransaction"/> wrapping the underlying transaction scope.</returns>
     [Obsolete("Use BeginTransactionScopeAsync(isolationLevel) instead for better resource management.", false)]
     public async Task<IDbTransaction> BeginTransactionAsync(IsolationLevel isolationLevel)
     {
@@ -175,6 +195,10 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
         return new LegacyTransactionWrapper(scope);
     }
 
+    /// <summary>
+    /// Commits the specified transaction.
+    /// </summary>
+    /// <param name="transaction">The transaction to commit.</param>
     [Obsolete("Use TransactionScope.Complete() instead when using BeginTransactionScopeAsync().", false)]
     public void CommitTransaction(IDbTransaction transaction)
     {
@@ -192,6 +216,10 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
         }
     }
 
+    /// <summary>
+    /// Rolls back the specified transaction.
+    /// </summary>
+    /// <param name="transaction">The transaction to roll back.</param>
     [Obsolete("Use TransactionScope.Rollback() instead when using BeginTransactionScopeAsync().", false)]
     public void RollbackTransaction(IDbTransaction transaction)
     {
@@ -209,6 +237,9 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
         }
     }
 
+    /// <summary>
+    /// Gets a value indicating whether there is an active transaction on the current connection.
+    /// </summary>
     public bool HasActiveTransaction => _connectionManager.HasActiveTransaction;
 
     /// <summary>
@@ -307,12 +338,19 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
                 $"SelectAllSql is null on '{generator.GetType().Name}'. This is an internal error."));
     }
 
+    /// <summary>
+    /// Releases all resources used by this context, including open connections and transaction scopes.
+    /// </summary>
     public void Dispose()
     {
         Dispose(true);
         GC.SuppressFinalize(this);
     }
 
+    /// <summary>
+    /// Releases the unmanaged resources used by this context and optionally releases managed resources.
+    /// </summary>
+    /// <param name="disposing"><c>true</c> to release both managed and unmanaged resources; <c>false</c> to release only unmanaged resources.</param>
     protected virtual void Dispose(bool disposing)
     {
         if (_disposed) return;

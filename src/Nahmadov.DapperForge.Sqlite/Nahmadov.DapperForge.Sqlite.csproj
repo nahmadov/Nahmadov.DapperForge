@@ -5,6 +5,12 @@
     <Title>DapperForge for SQLite</Title>
     <Description>SQLite provider for DapperForge using Dapper and Microsoft.Data.Sqlite.</Description>
     <PackageTags>dapper sqlite orm toolkit</PackageTags>
+    <PackageReleaseNotes>
+Initial release:
+- Full DapperForge provider for SQLite via Microsoft.Data.Sqlite.
+- "identifier" quoting, @ parameter placeholders, last_insert_rowid() for identity.
+- IN-clause batching capped at 999 parameters to respect SQLite limits.
+    </PackageReleaseNotes>
 
     <IsPackable>true</IsPackable>
   </PropertyGroup>

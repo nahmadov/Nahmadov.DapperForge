@@ -22,16 +22,18 @@ DapperForge is built on a layered architecture that separates concerns and provi
 ┌───▼───┐   ┌────▼────┐   ┌───▼────┐
 │ Query │   │Mutation │   │ Config │
 │ Layer │   │  Layer  │   │ Layer  │
+│       │   │  +Bulk  │   │        │
 └───┬───┘   └────┬────┘   └───┬────┘
     │            │            │
 ┌───▼────────────▼────────────▼────┐
 │      SQL Generation Layer        │
-│  (SqlGenerator, PredicateVisitor)│
+│  SqlGenerator                    │
+│  SqlPredicateTranslator          │
 └──────────────┬───────────────────┘
                │
 ┌──────────────▼───────────────────┐
 │      SQL Dialect Layer           │
-│  (SqlServer, Oracle, etc.)       │
+│  (SqlServer, Oracle, SQLite, …)  │
 └──────────────┬───────────────────┘
                │
 ┌──────────────▼───────────────────┐
@@ -86,7 +88,8 @@ public abstract class DapperDbContext : IDisposable
 
 **Design Pattern:** Facade pattern - delegates to specialized executors:
 - `EntityQueryExecutor<TEntity>` - Handles all query operations
-- `EntityMutationExecutor<TEntity>` - Handles all insert/update/delete operations
+- `EntityMutationExecutor<TEntity>` - Handles single-entity insert/update/delete operations
+- `BulkMutationExecutor<TEntity>` - Handles batched bulk insert and merge (upsert) operations; automatically chunks large value lists to respect per-dialect parameter limits
 
 **Key APIs:**
 ```csharp
@@ -176,7 +179,7 @@ QueryExecutionCoordinator determines strategy:
     ├─ Includes + SingleQuery → ExecuteSingleQueryWithIncludesAsync()
     └─ Includes + SplitQuery → ExecuteSplitQueryWithIncludesAsync()
     ↓
-SQL generated via SqlGenerator + PredicateVisitor
+SQL generated via SqlGenerator + SqlPredicateTranslator
     ↓
 Dapper executes query
     ↓
@@ -187,25 +190,29 @@ Returns List<TEntity>
 
 ### 3. Expression Translation System
 
-#### PredicateVisitor<TEntity>
+#### SqlPredicateTranslator
 
-**Location:** [PredicateVisitor.cs](../src/Nahmadov.DapperForge.Core/Builders/PredicateVisitor.cs)
+**Location:** [SqlPredicateTranslator.cs](../src/Nahmadov.DapperForge.Core/Querying/Predicates/SqlPredicateTranslator.cs)
 
-**Purpose:** Translate LINQ expression trees to SQL WHERE clauses.
+**Purpose:** Translate LINQ expression trees to parameterised SQL predicates. Single unified, non-generic translator used by all query and include strategies.
+
+**Constructor:** `SqlPredicateTranslator(EntityMapping mapping, ISqlDialect dialect, string alias = "a", string paramPrefix = "p")`
+- `alias` — the table alias prepended to each column reference (e.g. `"a"` → `a.[Name]`)
+- `paramPrefix` — prefix applied to generated parameter names to avoid collisions when multiple filters are combined (e.g. `"fb1_"` for an Include filter on join alias `b1`)
 
 **Supported Patterns:**
 - Comparisons: `==`, `!=`, `>`, `>=`, `<`, `<=`
-- Null checks: `== null`, `!= null`
+- Null checks: `== null`, `!= null`, `.HasValue`
 - Boolean properties: `u.IsActive`, `!u.IsActive`
 - String methods: `Contains()`, `StartsWith()`, `EndsWith()`
 - Collection Contains: `ids.Contains(u.Id)` → `IN` clause
 - Logical operators: `&&`, `||`, `!`
-- Case-insensitive comparisons
+- Case-insensitive comparisons (via `ignoreCase` parameter)
+- Implicit `Convert` nodes (value-type boxing in expression trees)
 
-**Performance Feature:**
-- Thread-safe LRU cache (max 1000 entries)
-- Expression structural hashing for cache keys
-- Compiled expressions cached and reused
+**Performance:**
+- Thread-safe LRU cache (max 1 000 entries) keyed by structural expression hash
+- Compiled expressions cached and reused across calls
 
 **Example Translation:**
 ```csharp
@@ -213,11 +220,17 @@ Returns List<TEntity>
 u => u.IsActive && u.Name.StartsWith("John") && u.Age > 18
 
 // Generated SQL
-WHERE a.[IsActive] = 1 AND a.[Name] LIKE @p0 AND a.[Age] > @Age
+WHERE a.[IsActive] = 1 AND a.[Name] LIKE @p0 AND a.[Age] > @p1
 
 // Parameters
-{ "@p0": "John%", "@Age": 18 }
+{ "p0": "John%", "p1": 18 }
 ```
+
+#### PredicateVisitor\<TEntity\>
+
+**Location:** [PredicateVisitor.cs](../src/Nahmadov.DapperForge.Core/Querying/Predicates/PredicateVisitor.cs)
+
+**Purpose:** Thin typed wrapper over `SqlPredicateTranslator` that enforces compile-time safety on the entity type. All translation logic lives in `SqlPredicateTranslator`.
 
 ### 4. SQL Generation System
 
@@ -498,7 +511,7 @@ SELECT * FROM Addresses WHERE CustomerId IN (@cid1, @cid2)
 
 #### Expression Compilation Cache
 
-**Location:** [PredicateVisitor.cs](../src/Nahmadov.DapperForge.Core/Builders/PredicateVisitor.cs)
+**Location:** [SqlPredicateTranslator.cs](../src/Nahmadov.DapperForge.Core/Querying/Predicates/SqlPredicateTranslator.cs)
 
 - LRU cache with max 1000 entries
 - Structural expression hashing for cache keys

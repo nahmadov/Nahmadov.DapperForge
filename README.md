@@ -9,7 +9,7 @@ A lightweight, high-performance Dapper-based data access layer that provides an 
 - **Immediate execution** — No change tracker, no `SaveChanges()`
 - **Explicit control** — Direct SQL execution for maximum performance
 - **Minimal allocations** — Reduced memory pressure compared to EF Core
-- **Database-agnostic** — Pluggable SQL dialects (SQL Server, Oracle)
+- **Database-agnostic** — Pluggable SQL dialects (SQL Server, Oracle, SQLite)
 - **Fluent API** — Familiar EF-like query and configuration syntax
 
 ---
@@ -21,6 +21,7 @@ A lightweight, high-performance Dapper-based data access layer that provides an 
 | `Nahmadov.DapperForge.Core` | Core library with abstractions |
 | `Nahmadov.DapperForge.SqlServer` | SQL Server dialect |
 | `Nahmadov.DapperForge.Oracle` | Oracle dialect |
+| `Nahmadov.DapperForge.Sqlite` | SQLite dialect |
 
 ---
 
@@ -372,6 +373,8 @@ Query  Mutation  Config
 
 ## Migration from EF Core
 
+### API Equivalence
+
 | EF Core | DapperForge |
 |---------|-------------|
 | `DbContext` | `DapperDbContext` |
@@ -380,9 +383,157 @@ Query  Mutation  Config
 | `Add() + SaveChangesAsync()` | `InsertAsync()` |
 | `Update() + SaveChangesAsync()` | `UpdateAsync()` |
 | `Remove() + SaveChangesAsync()` | `DeleteAsync()` |
-| `Include()` / `ThenInclude()` | Same API |
-| `AsNoTracking()` | N/A (never tracks) |
-| `SaveChangesAsync()` | N/A (immediate execution) |
+| `Include()` / `ThenInclude()` | Same API, same syntax |
+| `AsNoTracking()` | N/A — DapperForge never tracks |
+| `SaveChangesAsync()` | N/A — mutations execute immediately |
+| `IEntityTypeConfiguration<T>` | `IEntityTypeConfiguration<T>` (same interface) |
+| `modelBuilder.ApplyConfigurationsFromAssembly(...)` | Same method, same signature |
+
+### Step 1 — Replace the Context Base Class
+
+```csharp
+// EF Core
+public class AppDbContext : DbContext
+{
+    public DbSet<Customer> Customers => Set<Customer>();
+    public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
+    protected override void OnModelCreating(ModelBuilder modelBuilder) { ... }
+}
+
+// DapperForge
+public class AppDbContext : DapperDbContext
+{
+    public DapperSet<Customer> Customers => Set<Customer>();
+    public AppDbContext(DapperDbContextOptions<AppDbContext> options) : base(options) { }
+    protected override void OnModelCreating(DapperModelBuilder modelBuilder) { ... }
+}
+```
+
+### Step 2 — Register the Context
+
+```csharp
+// EF Core
+services.AddDbContext<AppDbContext>(o => o.UseSqlServer(connectionString));
+
+// DapperForge
+services.AddDapperDbContext<AppDbContext>(o => o.UseSqlServer(connectionString));
+```
+
+Both register the context as **scoped** — do not change the lifetime.
+
+### Step 3 — Convert Entity Configuration
+
+EF Core `IEntityTypeConfiguration<T>` classes can be reused with minimal changes:
+
+```csharp
+// EF Core
+public class CustomerConfiguration : IEntityTypeConfiguration<Customer>
+{
+    public void Configure(EntityTypeBuilder<Customer> builder)
+    {
+        builder.ToTable("Customers");
+        builder.HasKey(c => c.Id);
+        builder.Property(c => c.Name).HasColumnName("CustomerName");
+    }
+}
+
+// DapperForge — identical interface, use DapperEntityTypeBuilder<T>
+public class CustomerConfiguration : IEntityTypeConfiguration<Customer>
+{
+    public void Configure(DapperEntityTypeBuilder<Customer> builder)
+    {
+        builder.ToTable("Customers");
+        builder.HasKey(c => c.Id);
+        builder.Property(c => c.Name).HasColumnName("CustomerName");
+    }
+}
+```
+
+### Step 4 — Convert Query Patterns
+
+```csharp
+// EF Core
+var customers = await ctx.Customers
+    .Where(c => c.IsActive)
+    .OrderBy(c => c.Name)
+    .Skip(20).Take(10)
+    .ToListAsync();
+
+// DapperForge — identical fluent API
+var customers = await ctx.Customers
+    .Query()
+    .Where(c => c.IsActive)
+    .OrderBy(c => c.Name)
+    .Skip(20).Take(10)
+    .ToListAsync();
+```
+
+### Step 5 — Convert Mutations
+
+```csharp
+// EF Core
+ctx.Customers.Add(customer);
+await ctx.SaveChangesAsync();
+
+// DapperForge — immediate execution
+await ctx.Customers.InsertAsync(customer);
+```
+
+### Step 6 — Convert Transactions
+
+```csharp
+// EF Core
+await using var tx = await ctx.Database.BeginTransactionAsync();
+try { ...; await ctx.SaveChangesAsync(); await tx.CommitAsync(); }
+catch { await tx.RollbackAsync(); }
+
+// DapperForge
+var scope = await ctx.BeginTransactionScopeAsync();
+try
+{
+    await ctx.Customers.InsertAsync(customer, scope.Transaction);
+    await ctx.Orders.InsertAsync(order, scope.Transaction);
+    scope.Complete();
+}
+finally { scope.Dispose(); }
+```
+
+### Step 7 — Convert Include Queries
+
+```csharp
+// EF Core
+var orders = await ctx.Orders
+    .Include(o => o.Customer)
+    .Include(o => o.Lines)
+    .AsNoTracking()
+    .ToListAsync();
+
+// DapperForge (single JOIN query — default)
+var orders = await ctx.Orders
+    .Query()
+    .Include(o => o.Customer)
+    .Include(o => o.Lines)
+    .ToListAsync();
+
+// DapperForge (split query — one SELECT per Include level)
+var orders = await ctx.Orders
+    .Query()
+    .Include(o => o.Customer)
+    .Include(o => o.Lines)
+    .AsSplitQuery()
+    .ToListAsync();
+```
+
+### Known Gaps
+
+| EF Core feature | DapperForge status |
+|---|---|
+| Lazy loading | Not supported — use `Include` explicitly |
+| Change tracking | Not supported — DapperForge is always no-tracking |
+| Migrations / DDL | Not supported — manage schema externally |
+| Composite primary keys | Not supported — use `HasAlternateKey` as workaround |
+| LINQ aggregations (`Sum`, `GroupBy`, …) | Not supported — use raw SQL via `QueryAsync` |
+| Complex projections (`Select(x => new DTO{...})`) | Not supported — map manually after query |
 
 ---
 
@@ -404,7 +555,8 @@ DapperToolkit/
 ├── src/
 │   ├── Nahmadov.DapperForge.Core/       # Core library
 │   ├── Nahmadov.DapperForge.SqlServer/  # SQL Server dialect
-│   └── Nahmadov.DapperForge.Oracle/     # Oracle dialect
+│   ├── Nahmadov.DapperForge.Oracle/     # Oracle dialect
+│   └── Nahmadov.DapperForge.Sqlite/     # SQLite dialect
 ├── tests/
 │   └── Nahmadov.DapperForge.UnitTests/  # Unit tests
 ├── samples/

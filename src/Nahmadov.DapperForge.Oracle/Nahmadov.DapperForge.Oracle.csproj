@@ -5,6 +5,14 @@
     <Title>DapperForge for Oracle</Title>
     <Description>Oracle provider for DapperForge using Dapper and Oracle.ManagedDataAccess.</Description>
     <PackageTags>dapper oracle orm toolkit</PackageTags>
+    <PackageReleaseNotes>
+Unreleased:
+- Core: unified SqlPredicateTranslator; AsSplitQuery Include filter bug fixed.
+
+v2.2.0:
+- BulkInsertAsync and BulkMergeAsync (uses Oracle MERGE statement; RowsInserted/RowsUpdated not available natively).
+- Include/ThenInclude Where filter support.
+    </PackageReleaseNotes>
 
     <IsPackable>true</IsPackable>
   </PropertyGroup>

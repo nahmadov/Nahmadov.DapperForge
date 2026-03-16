@@ -5,6 +5,14 @@
     <Title>DapperForge for SQL Server</Title>
     <Description>SQL Server provider for DapperForge using Dapper and Microsoft.Data.SqlClient.</Description>
     <PackageTags>dapper sqlserver orm toolkit</PackageTags>
+    <PackageReleaseNotes>
+Unreleased:
+- Core: unified SqlPredicateTranslator; AsSplitQuery Include filter bug fixed.
+
+v2.2.0:
+- BulkInsertAsync and BulkMergeAsync (uses SQL Server MERGE statement).
+- Include/ThenInclude Where filter support.
+    </PackageReleaseNotes>
 
     <IsPackable>true</IsPackable>
   </PropertyGroup>

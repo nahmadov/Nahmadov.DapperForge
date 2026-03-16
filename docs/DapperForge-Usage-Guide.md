@@ -925,3 +925,67 @@ var customers2 = await db.Customers.WhereAsync(activeFilter); // Cache hit
 
 - [Architecture Documentation](./DapperForge-Architecture.md) - Understand internal architecture
 - [Complete Reference](./DapperForge-Complete-Reference.md) - Full API reference
+
+---
+
+## PostgreSQL Support (Coming Soon)
+
+> **Status:** Not yet available. The `Nahmadov.DapperForge.PostgreSql` package is planned. See [ToDo.md](./ToDo.md) for progress.
+
+When released, setup will follow the same pattern as the existing providers:
+
+```csharp
+// Planned API — subject to change
+services.AddDapperDbContext<AppDbContext>(o =>
+    o.UsePostgreSql(connectionString));
+```
+
+**Planned dialect characteristics:**
+
+| Feature | Implementation |
+|---|---|
+| Parameter style | `$1`, `$2`, … (positional) |
+| Identifier quoting | `"Identifier"` |
+| Identity retrieval | `RETURNING id` |
+| Bulk insert | `INSERT ... ON CONFLICT DO UPDATE` |
+| IN-clause limit | No hard limit (batched at 65 535 by convention) |
+
+**Packages required (planned):**
+
+```bash
+dotnet add package Nahmadov.DapperForge.Core
+dotnet add package Nahmadov.DapperForge.PostgreSql  # not yet published
+# Npgsql will be a transitive dependency
+```
+
+---
+
+## MySQL / MariaDB Support (Coming Soon)
+
+> **Status:** Not yet available. The `Nahmadov.DapperForge.MySql` package is planned. See [ToDo.md](./ToDo.md) for progress.
+
+When released, setup will follow the same pattern as the existing providers:
+
+```csharp
+// Planned API — subject to change
+services.AddDapperDbContext<AppDbContext>(o =>
+    o.UseMySql(connectionString));
+```
+
+**Planned dialect characteristics:**
+
+| Feature | Implementation |
+|---|---|
+| Parameter style | `@param` |
+| Identifier quoting | `` `Identifier` `` (backtick) |
+| Identity retrieval | `LAST_INSERT_ID()` |
+| Bulk insert / upsert | `INSERT ... ON DUPLICATE KEY UPDATE` |
+| IN-clause limit | No hard limit (batched at 65 535 by convention) |
+
+**Packages required (planned):**
+
+```bash
+dotnet add package Nahmadov.DapperForge.Core
+dotnet add package Nahmadov.DapperForge.MySql  # not yet published
+# MySqlConnector will be a transitive dependency
+```
