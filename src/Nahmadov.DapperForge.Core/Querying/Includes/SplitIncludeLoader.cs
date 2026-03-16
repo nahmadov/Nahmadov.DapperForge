@@ -1,10 +1,12 @@
+using System.Linq.Expressions;
 using System.Reflection;
 
 using Dapper;
 
-using Nahmadov.DapperForge.Core.Context;
 using Nahmadov.DapperForge.Core.Abstractions;
+using Nahmadov.DapperForge.Core.Context;
 using Nahmadov.DapperForge.Core.Modeling.Mapping;
+using Nahmadov.DapperForge.Core.Querying.Predicates;
 
 namespace Nahmadov.DapperForge.Core.Querying.Includes;
 /// <summary>
@@ -79,7 +81,7 @@ internal sealed class SplitIncludeLoader
             return [];
 
         var relatedMapping = _context.GetEntityMapping(fk.PrincipalEntityType);
-        var relatedEntities = await QueryByPrimaryKeyAsync(relatedMapping, fkValues).ConfigureAwait(false);
+        var relatedEntities = await QueryByPrimaryKeyAsync(relatedMapping, fkValues, node.Filter).ConfigureAwait(false);
 
         var relatedIndex = IdentityCache.BuildKeyIndex(relatedMapping, relatedEntities);
         HydrateReferenceNavigation(parents, node.Navigation, fk.ForeignKeyProperty, relatedIndex);
@@ -105,7 +107,7 @@ internal sealed class SplitIncludeLoader
             ?? throw new InvalidOperationException(
                 $"No foreign key found on '{childMapping.EntityType.Name}' pointing to '{parentMapping.EntityType.Name}'.");
 
-        var children = await QueryByForeignKeyAsync(childMapping, inverseFk, parentKeys).ConfigureAwait(false);
+        var children = await QueryByForeignKeyAsync(childMapping, inverseFk, parentKeys, node.Filter).ConfigureAwait(false);
 
         var childrenByParent = IdentityCache.GroupByForeignKey(inverseFk.ForeignKeyProperty, children);
         HydrateCollectionNavigation(parents, parentKeyProp, node, childrenByParent);
@@ -113,17 +115,21 @@ internal sealed class SplitIncludeLoader
         return children;
     }
 
-    private async Task<List<object>> QueryByPrimaryKeyAsync(EntityMapping mapping, List<object> keyValues)
+    private async Task<List<object>> QueryByPrimaryKeyAsync(
+        EntityMapping mapping,
+        List<object> keyValues,
+        LambdaExpression? filter = null)
     {
-        return await QueryByPropertyAsync(mapping, mapping.KeyProperties[0], keyValues).ConfigureAwait(false);
+        return await QueryByPropertyAsync(mapping, mapping.KeyProperties[0], keyValues, filter).ConfigureAwait(false);
     }
 
     private async Task<List<object>> QueryByForeignKeyAsync(
         EntityMapping mapping,
         ForeignKeyMapping fk,
-        List<object> fkValues)
+        List<object> fkValues,
+        LambdaExpression? filter = null)
     {
-        return await QueryByPropertyAsync(mapping, fk.ForeignKeyProperty, fkValues).ConfigureAwait(false);
+        return await QueryByPropertyAsync(mapping, fk.ForeignKeyProperty, fkValues, filter).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -142,7 +148,8 @@ internal sealed class SplitIncludeLoader
     private async Task<List<object>> QueryByPropertyAsync(
         EntityMapping mapping,
         PropertyInfo filterProperty,
-        List<object> values)
+        List<object> values,
+        LambdaExpression? filter = null)
     {
         if (values.Count == 0)
             return [];
@@ -153,7 +160,7 @@ internal sealed class SplitIncludeLoader
         // Single batch - execute directly
         if (values.Count <= batchSize)
         {
-            var (sql, parameters) = BuildInQuery(mapping, filterProperty, values);
+            var (sql, parameters) = BuildInQuery(mapping, filterProperty, values, filter);
             return await ExecuteQueryAsync(mapping.EntityType, sql, parameters).ConfigureAwait(false);
         }
 
@@ -164,7 +171,7 @@ internal sealed class SplitIncludeLoader
         foreach (var batch in batches)
         {
             var batchValues = batch.ToList();
-            var (sql, parameters) = BuildInQuery(mapping, filterProperty, batchValues);
+            var (sql, parameters) = BuildInQuery(mapping, filterProperty, batchValues, filter);
             var batchResults = await ExecuteQueryAsync(mapping.EntityType, sql, parameters).ConfigureAwait(false);
             allResults.AddRange(batchResults);
         }
@@ -197,7 +204,8 @@ internal sealed class SplitIncludeLoader
     private (string sql, DynamicParameters parameters) BuildInQuery(
         EntityMapping mapping,
         PropertyInfo filterProperty,
-        List<object> values)
+        List<object> values,
+        LambdaExpression? filter = null)
     {
         var generator = _context.GetSqlGenerator(mapping.EntityType);
         var baseSelect = DapperDbContext.GetSelectAllSqlFromGenerator(generator);
@@ -205,10 +213,19 @@ internal sealed class SplitIncludeLoader
         var propMapping = mapping.PropertyMappings.First(pm => pm.Property == filterProperty);
         var columnSql = $"a.{_dialect.QuoteIdentifier(propMapping.ColumnName)}";
 
-        var sql = $"{baseSelect} WHERE {columnSql} IN {_dialect.FormatParameter("p")}";
-
         var parameters = new DynamicParameters();
         parameters.Add("p", values);
+
+        var sql = $"{baseSelect} WHERE {columnSql} IN {_dialect.FormatParameter("p")}";
+
+        if (filter is not null)
+        {
+            var translator = new SqlPredicateTranslator(mapping, _dialect, alias: "a");
+            var (filterSql, filterParams) = translator.Translate(filter);
+            sql = $"{sql} AND {filterSql}";
+            foreach (var (k, v) in filterParams)
+                parameters.Add(k, v);
+        }
 
         return (sql, parameters);
     }

@@ -4,7 +4,7 @@ namespace Nahmadov.DapperForge.Core.Querying.Predicates;
 /// <summary>
 /// Handles string expression operations including equality and LIKE patterns.
 /// </summary>
-internal sealed class StringExpressionHandler<TEntity> where TEntity : class
+internal sealed class StringExpressionHandler
 {
     private readonly SqlExpressionBuilder _sqlBuilder;
     private readonly NullExpressionHandler _nullHandler;
@@ -28,12 +28,12 @@ internal sealed class StringExpressionHandler<TEntity> where TEntity : class
         MemberExpression? member = null;
         Expression? other = null;
 
-        if (node.Left is MemberExpression ml && EntityPropertyHelper.IsStringProperty<TEntity>(ml))
+        if (node.Left is MemberExpression ml && _sqlBuilder.IsEntityStringProperty(ml))
         {
             member = ml;
             other = node.Right;
         }
-        else if (node.Right is MemberExpression mr && EntityPropertyHelper.IsStringProperty<TEntity>(mr))
+        else if (node.Right is MemberExpression mr && _sqlBuilder.IsEntityStringProperty(mr))
         {
             member = mr;
             other = node.Left;
@@ -100,22 +100,12 @@ internal sealed class StringExpressionHandler<TEntity> where TEntity : class
     }
 
     private static string EscapeLikeValue(string value)
-    {
-        return value
-            .Replace("\\", "\\\\")
-            .Replace("%", "\\%")
-            .Replace("_", "\\_");
-    }
+        => value.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_");
 
     private static object? NormalizeForCase(object? value, bool ignoreCase)
     {
-        if (!ignoreCase)
+        if (!ignoreCase || value is not string str)
             return value;
-
-        if (value is string str)
-            return str.ToLowerInvariant();
-
-        return value;
+        return str.ToLowerInvariant();
     }
 }
-

@@ -333,7 +333,7 @@ public class SampleRunner(AppDapperDbContext db)
         var departmentsSplit = await _db.Departments
             .Query()
             // A → [B] → C  (Employee's single Address)
-            .Include(dept => dept.Employees)
+            .Include(dept => dept.Employees.Where(x => x.Position.Contains("Backend Developer"))) // Filter Employees to demonstrate that Include can be combined with Queryable operations
                 .ThenInclude<Employee, EmployeeAddress?>(emp => emp.Address)
             // A → [B] → [D] → F  (Employee's Assignments, each with a Category)
             .Include(dept => dept.Employees)
@@ -384,23 +384,23 @@ public class SampleRunner(AppDapperDbContext db)
 
         // ── F: AssignmentCategories ──────────────────────────────────────────
         var catEngineering = await EnsureAssignmentCategoryAsync("Engineering");
-        var catMarketing   = await EnsureAssignmentCategoryAsync("Marketing");
+        var catMarketing = await EnsureAssignmentCategoryAsync("Marketing");
 
         // ── C: EmployeeAddresses ─────────────────────────────────────────────
-        var addrBaku   = await EnsureEmployeeAddressAsync("İstiqlaliyyət küç. 10", "Bakı");
-        var addrLondon = await EnsureEmployeeAddressAsync("10 Downing St",         "London");
+        var addrBaku = await EnsureEmployeeAddressAsync("İstiqlaliyyət küç. 10", "Bakı");
+        var addrLondon = await EnsureEmployeeAddressAsync("10 Downing St", "London");
 
         // ── A: Departments ───────────────────────────────────────────────────
         var deptId = await EnsureDepartmentAsync("Product Engineering");
 
         // ── B: Employees ─────────────────────────────────────────────────────
-        var empAliceId = await EnsureEmployeeAsync("Alice Smith",  "Backend Developer", deptId, addrBaku);
-        var empBobId   = await EnsureEmployeeAsync("Bob Johnson",  "Frontend Developer", deptId, addrLondon);
+        var empAliceId = await EnsureEmployeeAsync("Alice Smith", "Backend Developer", deptId, addrBaku);
+        var empBobId = await EnsureEmployeeAsync("Bob Johnson", "Frontend Developer", deptId, addrLondon);
 
         // ── D: Assignments ───────────────────────────────────────────────────
-        await EnsureAssignmentAsync("API Gateway refactor",  empAliceId, catEngineering);
+        await EnsureAssignmentAsync("API Gateway refactor", empAliceId, catEngineering);
         await EnsureAssignmentAsync("Database optimisation", empAliceId, catEngineering);
-        await EnsureAssignmentAsync("Landing page redesign", empBobId,   catMarketing);
+        await EnsureAssignmentAsync("Landing page redesign", empBobId, catMarketing);
     }
 
     private async Task<int> EnsureAssignmentCategoryAsync(string name)
@@ -409,7 +409,7 @@ public class SampleRunner(AppDapperDbContext db)
         if (existing is not null) return existing.Id;
 
         var cat = new AssignmentCategory { Name = name };
-        var id  = await _db.AssignmentCategories.InsertAndGetIdAsync<int>(cat);
+        var id = await _db.AssignmentCategories.InsertAndGetIdAsync<int>(cat);
         Console.WriteLine($"  Inserted AssignmentCategory '{name}' id={id}");
         return id;
     }
@@ -420,7 +420,7 @@ public class SampleRunner(AppDapperDbContext db)
         if (existing is not null) return existing.Id;
 
         var addr = new EmployeeAddress { Street = street, City = city };
-        var id   = await _db.EmployeeAddresses.InsertAndGetIdAsync<int>(addr);
+        var id = await _db.EmployeeAddresses.InsertAndGetIdAsync<int>(addr);
         Console.WriteLine($"  Inserted EmployeeAddress '{city}' id={id}");
         return id;
     }
@@ -431,7 +431,7 @@ public class SampleRunner(AppDapperDbContext db)
         if (existing is not null) return existing.Id;
 
         var dept = new Department { Name = name, CreatedAt = DateTime.UtcNow };
-        var id   = await _db.Departments.InsertAndGetIdAsync<int>(dept);
+        var id = await _db.Departments.InsertAndGetIdAsync<int>(dept);
         Console.WriteLine($"  Inserted Department '{name}' id={id}");
         return id;
     }
@@ -443,11 +443,11 @@ public class SampleRunner(AppDapperDbContext db)
 
         var emp = new Employee
         {
-            Name         = name,
-            Position     = position,
+            Name = name,
+            Position = position,
             DepartmentId = deptId,
-            AddressId    = addressId,
-            CreatedAt    = DateTime.UtcNow
+            AddressId = addressId,
+            CreatedAt = DateTime.UtcNow
         };
         var id = await _db.Employees.InsertAndGetIdAsync<int>(emp);
         Console.WriteLine($"  Inserted Employee '{name}' id={id}");

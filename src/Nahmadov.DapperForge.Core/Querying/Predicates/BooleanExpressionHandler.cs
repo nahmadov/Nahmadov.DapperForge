@@ -1,29 +1,26 @@
 using System.Linq.Expressions;
-using System.Reflection;
 
 namespace Nahmadov.DapperForge.Core.Querying.Predicates;
 /// <summary>
 /// Handles boolean expression comparisons and projections.
 /// </summary>
-internal sealed class BooleanExpressionHandler<TEntity> where TEntity : class
+internal sealed class BooleanExpressionHandler
 {
     private readonly SqlExpressionBuilder _sqlBuilder;
 
     public BooleanExpressionHandler(SqlExpressionBuilder sqlBuilder)
-    {
-        _sqlBuilder = sqlBuilder;
-    }
+        => _sqlBuilder = sqlBuilder;
 
     public bool TryHandleBooleanProjection(Expression body)
     {
-        if (body is MemberExpression member && IsEntityBooleanMember(member))
+        if (body is MemberExpression member && _sqlBuilder.IsEntityBoolProperty(member))
         {
             AppendBooleanComparison(member, true);
             return true;
         }
 
-        if (body is UnaryExpression { NodeType: ExpressionType.Not, Operand: MemberExpression neg } &&
-            IsEntityBooleanMember(neg))
+        if (body is UnaryExpression { NodeType: ExpressionType.Not, Operand: MemberExpression neg }
+            && _sqlBuilder.IsEntityBoolProperty(neg))
         {
             AppendBooleanComparison(neg, false);
             return true;
@@ -45,16 +42,6 @@ internal sealed class BooleanExpressionHandler<TEntity> where TEntity : class
         return true;
     }
 
-    public bool IsEntityBooleanMember(MemberExpression node)
-    {
-        if (!EntityPropertyHelper.IsEntityProperty<TEntity>(node))
-            return false;
-
-        var propertyType = ((PropertyInfo)node.Member).PropertyType;
-        var underlying = Nullable.GetUnderlyingType(propertyType) ?? propertyType;
-        return underlying == typeof(bool);
-    }
-
     private void AppendBooleanComparison(MemberExpression member, bool value)
     {
         var column = _sqlBuilder.GetColumnNameForMember(member);
@@ -63,15 +50,15 @@ internal sealed class BooleanExpressionHandler<TEntity> where TEntity : class
 
     private bool IsBooleanComparison(BinaryExpression node, out MemberExpression member, out bool value)
     {
-        if (node.Left is MemberExpression left && IsEntityBooleanMember(left) &&
-            ExpressionEvaluator.TryEvalToBool(node.Right, out value))
+        if (node.Left is MemberExpression left && _sqlBuilder.IsEntityBoolProperty(left)
+            && ExpressionEvaluator.TryEvalToBool(node.Right, out value))
         {
             member = left;
             return true;
         }
 
-        if (node.Right is MemberExpression right && IsEntityBooleanMember(right) &&
-            ExpressionEvaluator.TryEvalToBool(node.Left, out value))
+        if (node.Right is MemberExpression right && _sqlBuilder.IsEntityBoolProperty(right)
+            && ExpressionEvaluator.TryEvalToBool(node.Left, out value))
         {
             member = right;
             return true;
@@ -82,4 +69,3 @@ internal sealed class BooleanExpressionHandler<TEntity> where TEntity : class
         return false;
     }
 }
-

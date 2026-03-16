@@ -63,7 +63,17 @@ internal sealed class QueryExecutionCoordinator<TEntity> where TEntity : class
         var planBuilder = new SingleQueryPlanBuilder(_generator.Dialect, _context.GetEntityMapping);
         var plan = planBuilder.Build(_mapping, includeTree);
 
-        var (sql, parameters) = _sqlBuilder.ApplyWhereOrderPaging(plan.Sql, state);
+        var (sql, rootParameters) = _sqlBuilder.ApplyWhereOrderPaging(plan.Sql, state);
+
+        // Merge include-filter parameters with root WHERE parameters.
+        object parameters = rootParameters;
+        if (plan.FilterParameters.Count > 0)
+        {
+            var merged = new Dictionary<string, object?>((Dictionary<string, object?>)rootParameters);
+            foreach (var (k, v) in plan.FilterParameters)
+                merged[k] = v;
+            parameters = merged;
+        }
 
         var executor = new SingleQueryIncludeExecutor(_context);
         return await executor.ExecuteAsync<TEntity>(

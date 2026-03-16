@@ -5,14 +5,12 @@ namespace Nahmadov.DapperForge.Core.Querying.Predicates;
 /// <summary>
 /// Handles collection Contains expressions for IN clauses.
 /// </summary>
-internal sealed class CollectionExpressionHandler<TEntity> where TEntity : class
+internal sealed class CollectionExpressionHandler
 {
     private readonly SqlExpressionBuilder _sqlBuilder;
 
     public CollectionExpressionHandler(SqlExpressionBuilder sqlBuilder)
-    {
-        _sqlBuilder = sqlBuilder;
-    }
+        => _sqlBuilder = sqlBuilder;
 
     public bool IsEnumerableContains(MethodCallExpression node, out MemberExpression member, out Expression valuesExpr)
     {
@@ -22,7 +20,7 @@ internal sealed class CollectionExpressionHandler<TEntity> where TEntity : class
         // Pattern: Enumerable.Contains(list, entity.Property)
         if (node.Method.Name == nameof(Enumerable.Contains) && node.Arguments.Count == 2)
         {
-            if (node.Arguments[1] is MemberExpression me && EntityPropertyHelper.IsEntityProperty<TEntity>(me))
+            if (node.Arguments[1] is MemberExpression me && _sqlBuilder.IsEntityProperty(me))
             {
                 member = me;
                 valuesExpr = node.Arguments[0];
@@ -30,21 +28,10 @@ internal sealed class CollectionExpressionHandler<TEntity> where TEntity : class
             }
         }
 
-        // Pattern: list.Contains(entity.Property)
-        if (node.Method.Name == nameof(List<int>.Contains) && node.Object is not null && node.Arguments.Count == 1)
-        {
-            if (node.Arguments[0] is MemberExpression me && EntityPropertyHelper.IsEntityProperty<TEntity>(me))
-            {
-                member = me;
-                valuesExpr = node.Object;
-                return true;
-            }
-        }
-
-        // Generic pattern: collection.Contains(entity.Property)
+        // Pattern: list.Contains(entity.Property)  (instance method on List<T> or similar)
         if (node.Method.Name == "Contains" && node.Object is not null && node.Arguments.Count == 1)
         {
-            if (node.Arguments[0] is MemberExpression me && EntityPropertyHelper.IsEntityProperty<TEntity>(me))
+            if (node.Arguments[0] is MemberExpression me && _sqlBuilder.IsEntityProperty(me))
             {
                 member = me;
                 valuesExpr = node.Object;
@@ -78,4 +65,3 @@ internal sealed class CollectionExpressionHandler<TEntity> where TEntity : class
         _sqlBuilder.AppendSql($"{column} IN {paramSql}");
     }
 }
-
