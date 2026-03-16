@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PackageId>Nahmadov.DapperForge.Sqlite</PackageId>
+    <Title>DapperForge for SQLite</Title>
+    <Description>SQLite provider for DapperForge using Dapper and Microsoft.Data.Sqlite.</Description>
+    <PackageTags>dapper sqlite orm toolkit</PackageTags>
+
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" />
+    <PackageReference Include="Microsoft.Extensions.Configuration" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Include="Microsoft.SourceLink.GitHub" PrivateAssets="All" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Nahmadov.DapperForge.Core\Nahmadov.DapperForge.Core.csproj" />
+  </ItemGroup>
+
+</Project>

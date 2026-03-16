@@ -1,0 +1,19 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Folder Name="/samples/">
+    <Project Path="samples/ConnectionSample/ConnectionSample.csproj" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/Nahmadov.DapperForge.Core/Nahmadov.DapperForge.Core.csproj" />
+    <Project Path="src/Nahmadov.DapperForge.Oracle/Nahmadov.DapperForge.Oracle.csproj" />
+    <Project Path="src/Nahmadov.DapperForge.Sqlite/Nahmadov.DapperForge.Sqlite.csproj" />
+    <Project Path="src/Nahmadov.DapperForge.SqlServer/Nahmadov.DapperForge.SqlServer.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Nahmadov.DapperForge.UnitTests/Nahmadov.DapperForge.UnitTests.csproj" />
+  </Folder>
+</Solution>

@@ -90,6 +90,77 @@ public class AuditLog
     public DateTime CreatedAt { get; set; }
 }
 
+// ──────────────────────────────────────────────────────────────────────────────
+// ThenInclude sample entities
+//
+//  Department (A)  ──< Employee (B)  ──  EmployeeAddress (C)
+//                                    ──< Assignment     (D)  ──  AssignmentCategory (F)
+// ──────────────────────────────────────────────────────────────────────────────
+
+/// <summary>A – main table. Has a list of Employees.</summary>
+public class Department : BaseEntity
+{
+    // Id, Name, CreatedAt – inherited from BaseEntity
+    public List<Employee> Employees { get; set; } = [];
+}
+
+/// <summary>B – has one Address (C) and a list of Assignments (D).</summary>
+public class Employee : BaseEntity
+{
+    // Id, Name, CreatedAt – inherited from BaseEntity
+    public int DepartmentId { get; set; }
+
+    [MaxLength(100)]
+    public string Position { get; set; } = string.Empty;
+
+    /// <summary>FK → EmployeeAddress (C).</summary>
+    public int? AddressId { get; set; }
+
+    // Navigation properties
+    public Department? Department { get; set; }
+    public EmployeeAddress? Address { get; set; }
+    public List<Assignment> Assignments { get; set; } = [];
+}
+
+/// <summary>C – single address per employee (FK on Employee side).</summary>
+public class EmployeeAddress
+{
+    public int Id { get; set; }
+
+    [MaxLength(200)]
+    public string Street { get; set; } = string.Empty;
+
+    [MaxLength(100)]
+    public string City { get; set; } = string.Empty;
+}
+
+/// <summary>D – belongs to an Employee, has one AssignmentCategory (F).</summary>
+public class Assignment
+{
+    public int Id { get; set; }
+    public int EmployeeId { get; set; }
+
+    [Required, MaxLength(200)]
+    public string Title { get; set; } = string.Empty;
+
+    public int CategoryId { get; set; }
+
+    // Navigation properties
+    public Employee? Employee { get; set; }
+    public AssignmentCategory? Category { get; set; }
+}
+
+/// <summary>F – single category per assignment.</summary>
+public class AssignmentCategory
+{
+    public int Id { get; set; }
+
+    [Required, MaxLength(100)]
+    public string Name { get; set; } = string.Empty;
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+
 /// <summary>
 /// Product entity demonstrating composite alternate key usage.
 /// This entity has no primary key - it uses TenantId + ProductCode as a business key.

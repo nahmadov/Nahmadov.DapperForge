@@ -18,6 +18,7 @@ public class SampleRunner(AppDapperDbContext db)
         await ShowReadOnlyExampleAsync();
         await ShowDapperQueryableExamplesAsync();
         await ShowIncludeExamplesAsync();
+        await ShowThenIncludeExamplesAsync();
         await ShowAlternateKeyExamplesAsync();
         await ShowTransactionExamplesAsync();
         await ShowBulkOperationsExamplesAsync();
@@ -297,6 +298,171 @@ public class SampleRunner(AppDapperDbContext db)
             Console.WriteLine($"    - Customer: {customerName}");
             Console.WriteLine($"    - Status: {ticket.Status}");
         }
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // ThenInclude examples
+    //
+    // Relationship chain:
+    //   Department (A)  ──< Employee (B)  ──  EmployeeAddress       (C, single)
+    //                                     ──< Assignment            (D, list)
+    //                                            └──  AssignmentCategory  (F, single)
+    //
+    // Required SQL tables (run once before the first execution):
+    //
+    //   CREATE TABLE dbo.Departments        (Id INT IDENTITY PRIMARY KEY, Name NVARCHAR(120) NOT NULL, CreatedAt DATETIME2 NOT NULL);
+    //   CREATE TABLE dbo.EmployeeAddresses  (Id INT IDENTITY PRIMARY KEY, Street NVARCHAR(200), City NVARCHAR(100));
+    //   CREATE TABLE dbo.AssignmentCategories (Id INT IDENTITY PRIMARY KEY, Name NVARCHAR(100) NOT NULL);
+    //   CREATE TABLE dbo.Employees          (Id INT IDENTITY PRIMARY KEY, Name NVARCHAR(120) NOT NULL, CreatedAt DATETIME2 NOT NULL,
+    //                                        DepartmentId INT NOT NULL REFERENCES dbo.Departments(Id),
+    //                                        Position NVARCHAR(100), AddressId INT NULL REFERENCES dbo.EmployeeAddresses(Id));
+    //   CREATE TABLE dbo.Assignments        (Id INT IDENTITY PRIMARY KEY, EmployeeId INT NOT NULL REFERENCES dbo.Employees(Id),
+    //                                        Title NVARCHAR(200) NOT NULL, CategoryId INT NOT NULL REFERENCES dbo.AssignmentCategories(Id));
+    // ──────────────────────────────────────────────────────────────────────────
+    private async Task ShowThenIncludeExamplesAsync()
+    {
+        Console.WriteLine("\n=== ThenInclude (Deep Eager Loading) Examples ===\n");
+
+        await SeedThenIncludeDataAsync();
+
+        // ── Example 1: AsSplitQuery (multiple round-trips, avoids Cartesian product) ──
+        Console.WriteLine("Example 1: AsSplitQuery");
+        Console.WriteLine("  Chain: Department → [Employee] → Address (C)");
+        Console.WriteLine("         Department → [Employee] → [Assignment] → Category (F)\n");
+
+        var departmentsSplit = await _db.Departments
+            .Query()
+            // A → [B] → C  (Employee's single Address)
+            .Include(dept => dept.Employees)
+                .ThenInclude<Employee, EmployeeAddress?>(emp => emp.Address)
+            // A → [B] → [D] → F  (Employee's Assignments, each with a Category)
+            .Include(dept => dept.Employees)
+                .ThenInclude<Employee, IEnumerable<Assignment>>(emp => emp.Assignments)
+                .ThenInclude<Assignment, AssignmentCategory?>(a => a.Category)
+            .AsSplitQuery()
+            .ToListAsync();
+
+        PrintDepartments(departmentsSplit, "SplitQuery");
+
+        // ── Example 2: AsSingleQuery (one JOIN query) ───────────────────────
+        Console.WriteLine("\nExample 2: AsSingleQuery");
+
+        var departmentsSingle = await _db.Departments
+            .Query()
+            .Include(dept => dept.Employees)
+                .ThenInclude<Employee, EmployeeAddress?>(emp => emp.Address)
+            .Include(dept => dept.Employees)
+                .ThenInclude<Employee, IEnumerable<Assignment>>(emp => emp.Assignments)
+                .ThenInclude<Assignment, AssignmentCategory?>(a => a.Category)
+            .AsSingleQuery()
+            .ToListAsync();
+
+        PrintDepartments(departmentsSingle, "SingleQuery");
+    }
+
+    private static void PrintDepartments(IEnumerable<Department> departments, string label)
+    {
+        foreach (var dept in departments)
+        {
+            Console.WriteLine($"  [{label}] Department: {dept.Name}");
+            foreach (var emp in dept.Employees)
+            {
+                var city = emp.Address?.City ?? "(no address)";
+                Console.WriteLine($"    Employee: {emp.Name} – {emp.Position} – {city}");
+                foreach (var asgn in emp.Assignments)
+                {
+                    var cat = asgn.Category?.Name ?? "(no category)";
+                    Console.WriteLine($"      Assignment: {asgn.Title}  [Category: {cat}]");
+                }
+            }
+        }
+    }
+
+    private async Task SeedThenIncludeDataAsync()
+    {
+        Console.WriteLine("Seeding ThenInclude sample data (idempotent)...");
+
+        // ── F: AssignmentCategories ──────────────────────────────────────────
+        var catEngineering = await EnsureAssignmentCategoryAsync("Engineering");
+        var catMarketing   = await EnsureAssignmentCategoryAsync("Marketing");
+
+        // ── C: EmployeeAddresses ─────────────────────────────────────────────
+        var addrBaku   = await EnsureEmployeeAddressAsync("İstiqlaliyyət küç. 10", "Bakı");
+        var addrLondon = await EnsureEmployeeAddressAsync("10 Downing St",         "London");
+
+        // ── A: Departments ───────────────────────────────────────────────────
+        var deptId = await EnsureDepartmentAsync("Product Engineering");
+
+        // ── B: Employees ─────────────────────────────────────────────────────
+        var empAliceId = await EnsureEmployeeAsync("Alice Smith",  "Backend Developer", deptId, addrBaku);
+        var empBobId   = await EnsureEmployeeAsync("Bob Johnson",  "Frontend Developer", deptId, addrLondon);
+
+        // ── D: Assignments ───────────────────────────────────────────────────
+        await EnsureAssignmentAsync("API Gateway refactor",  empAliceId, catEngineering);
+        await EnsureAssignmentAsync("Database optimisation", empAliceId, catEngineering);
+        await EnsureAssignmentAsync("Landing page redesign", empBobId,   catMarketing);
+    }
+
+    private async Task<int> EnsureAssignmentCategoryAsync(string name)
+    {
+        var existing = await _db.AssignmentCategories.FirstOrDefaultAsync(c => c.Name == name, ignoreCase: true);
+        if (existing is not null) return existing.Id;
+
+        var cat = new AssignmentCategory { Name = name };
+        var id  = await _db.AssignmentCategories.InsertAndGetIdAsync<int>(cat);
+        Console.WriteLine($"  Inserted AssignmentCategory '{name}' id={id}");
+        return id;
+    }
+
+    private async Task<int> EnsureEmployeeAddressAsync(string street, string city)
+    {
+        var existing = await _db.EmployeeAddresses.FirstOrDefaultAsync(a => a.City == city && a.Street == street);
+        if (existing is not null) return existing.Id;
+
+        var addr = new EmployeeAddress { Street = street, City = city };
+        var id   = await _db.EmployeeAddresses.InsertAndGetIdAsync<int>(addr);
+        Console.WriteLine($"  Inserted EmployeeAddress '{city}' id={id}");
+        return id;
+    }
+
+    private async Task<int> EnsureDepartmentAsync(string name)
+    {
+        var existing = await _db.Departments.FirstOrDefaultAsync(d => d.Name == name, ignoreCase: true);
+        if (existing is not null) return existing.Id;
+
+        var dept = new Department { Name = name, CreatedAt = DateTime.UtcNow };
+        var id   = await _db.Departments.InsertAndGetIdAsync<int>(dept);
+        Console.WriteLine($"  Inserted Department '{name}' id={id}");
+        return id;
+    }
+
+    private async Task<int> EnsureEmployeeAsync(string name, string position, int deptId, int addressId)
+    {
+        var existing = await _db.Employees.FirstOrDefaultAsync(e => e.Name == name, ignoreCase: true);
+        if (existing is not null) return existing.Id;
+
+        var emp = new Employee
+        {
+            Name         = name,
+            Position     = position,
+            DepartmentId = deptId,
+            AddressId    = addressId,
+            CreatedAt    = DateTime.UtcNow
+        };
+        var id = await _db.Employees.InsertAndGetIdAsync<int>(emp);
+        Console.WriteLine($"  Inserted Employee '{name}' id={id}");
+        return id;
+    }
+
+    private async Task EnsureAssignmentAsync(string title, int employeeId, int categoryId)
+    {
+        var existing = await _db.Assignments.FirstOrDefaultAsync(
+            a => a.Title == title && a.EmployeeId == employeeId);
+        if (existing is not null) return;
+
+        var asgn = new Assignment { Title = title, EmployeeId = employeeId, CategoryId = categoryId };
+        await _db.Assignments.InsertAsync(asgn);
+        Console.WriteLine($"  Inserted Assignment '{title}'");
     }
 
     private async Task ShowAlternateKeyExamplesAsync()
