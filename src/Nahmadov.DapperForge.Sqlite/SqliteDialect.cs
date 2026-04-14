@@ -1,6 +1,9 @@
 using System.Data;
 
 using Nahmadov.DapperForge.Core.Abstractions;
+using Nahmadov.DapperForge.Core.Modeling.Mapping;
+using Nahmadov.DapperForge.Core.Querying.Predicates;
+using Nahmadov.DapperForge.Sqlite.Date;
 
 namespace Nahmadov.DapperForge.Sqlite;
 
@@ -34,6 +37,24 @@ public class SqliteDialect : ISqlDialect
     }
 
     public string FormatBoolean(bool value) => value ? "1" : "0";
+
+    // ── Predicate translator factory ──────────────────────────────────────────
+
+    /// <summary>
+    /// Returns a <see cref="SqlitePredicateVisitor{TEntity}"/> that supports
+    /// <see cref="SqliteDate.Date"/> and <see cref="SqliteDate.DateTime"/> expression markers
+    /// in addition to all base predicate patterns.
+    /// </summary>
+    public PredicateVisitor<TEntity> CreatePredicateVisitor<TEntity>(EntityMapping mapping)
+        where TEntity : class
+        => new SqlitePredicateVisitor<TEntity>(mapping, this);
+
+    /// <summary>
+    /// Returns a <see cref="SqlitePredicateTranslator"/> so that Include-filter expressions
+    /// also benefit from SQLite date-function support.
+    /// </summary>
+    public SqlPredicateTranslator CreatePredicateTranslator(EntityMapping mapping, string alias = "a", string paramPrefix = "p")
+        => new SqlitePredicateTranslator(mapping, this, alias, paramPrefix);
 
     public bool TryMapDbType(Type clrType, out DbType dbType)
     {

@@ -142,7 +142,7 @@ internal sealed class SingleQueryPlanBuilder(ISqlDialect dialect, Func<Type, Ent
         string alias,
         Dictionary<string, object?> filterParameters)
     {
-        var translator = new SqlPredicateTranslator(mapping, _dialect, alias, paramPrefix: $"f{alias}_");
+        var translator = _dialect.CreatePredicateTranslator(mapping, alias, paramPrefix: $"f{alias}_");
         var (filterSql, nodeParams) = translator.Translate(filter);
         foreach (var (k, v) in nodeParams)
             filterParameters[k] = v;

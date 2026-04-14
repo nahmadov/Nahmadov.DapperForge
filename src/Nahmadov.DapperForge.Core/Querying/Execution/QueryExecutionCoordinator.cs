@@ -50,7 +50,7 @@ internal sealed class QueryExecutionCoordinator<TEntity> where TEntity : class
         if (state.Predicate is null)
             return await _context.QueryFirstOrDefaultAsync<long>(baseSql, new Dictionary<string, object?>()).ConfigureAwait(false);
 
-        var visitor = new PredicateVisitor<TEntity>(_mapping, _generator.Dialect);
+        var visitor = _generator.Dialect.CreatePredicateVisitor<TEntity>(_mapping);
         var (whereClause, parameters) = visitor.Translate(state.Predicate, state.IgnoreCase);
 
         return await _context.QueryFirstOrDefaultAsync<long>($"{baseSql} WHERE {whereClause}", parameters).ConfigureAwait(false);

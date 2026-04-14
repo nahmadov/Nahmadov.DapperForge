@@ -45,7 +45,7 @@ internal sealed class EntityQueryExecutor<TEntity>(DapperDbContext context, SqlG
     {
         ArgumentNullException.ThrowIfNull(predicate);
 
-        var visitor = new PredicateVisitor<TEntity>(_mapping, _generator.Dialect);
+        var visitor = _generator.Dialect.CreatePredicateVisitor<TEntity>(_mapping);
         var (sql, parameters) = visitor.Translate(predicate, ignoreCase);
 
         var finalSql = $"{_generator.SelectAllSql} WHERE {sql}";
@@ -64,7 +64,7 @@ internal sealed class EntityQueryExecutor<TEntity>(DapperDbContext context, SqlG
     {
         ArgumentNullException.ThrowIfNull(predicate);
 
-        var visitor = new PredicateVisitor<TEntity>(_mapping, _generator.Dialect);
+        var visitor = _generator.Dialect.CreatePredicateVisitor<TEntity>(_mapping);
         var (sql, parameters) = visitor.Translate(predicate, ignoreCase);
 
         var finalSql = $"{_generator.SelectAllSql} WHERE {sql}";
@@ -81,7 +81,7 @@ internal sealed class EntityQueryExecutor<TEntity>(DapperDbContext context, SqlG
     {
         ArgumentNullException.ThrowIfNull(predicate);
 
-        var visitor = new PredicateVisitor<TEntity>(_mapping, _generator.Dialect);
+        var visitor = _generator.Dialect.CreatePredicateVisitor<TEntity>(_mapping);
         var (whereClause, parameters) = visitor.Translate(predicate, ignoreCase);
 
         var countSql = $"SELECT COUNT(*) FROM {_generator.TableName} AS a WHERE NOT ({whereClause})";
@@ -94,7 +94,7 @@ internal sealed class EntityQueryExecutor<TEntity>(DapperDbContext context, SqlG
     {
         ArgumentNullException.ThrowIfNull(predicate);
 
-        var visitor = new PredicateVisitor<TEntity>(_mapping, _generator.Dialect);
+        var visitor = _generator.Dialect.CreatePredicateVisitor<TEntity>(_mapping);
         var (whereClause, parameters) = visitor.Translate(predicate, ignoreCase);
 
         var countSql = $"SELECT COUNT(*) FROM {_generator.TableName} AS a WHERE {whereClause}";

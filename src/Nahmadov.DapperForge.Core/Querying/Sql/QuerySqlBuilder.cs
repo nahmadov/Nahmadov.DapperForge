@@ -28,7 +28,7 @@ internal sealed class QuerySqlBuilder<TEntity>(SqlGenerator<TEntity> generator, 
         if (state.Predicate is null)
             return new Dictionary<string, object?>();
 
-        var visitor = new PredicateVisitor<TEntity>(_mapping, _generator.Dialect);
+        var visitor = _generator.Dialect.CreatePredicateVisitor<TEntity>(_mapping);
         var (_, parameters) = visitor.Translate(state.Predicate, state.IgnoreCase);
         return parameters;
     }
@@ -57,7 +57,7 @@ internal sealed class QuerySqlBuilder<TEntity>(SqlGenerator<TEntity> generator, 
         if (state.Predicate is null)
             return sql;
 
-        var visitor = new PredicateVisitor<TEntity>(_mapping, _generator.Dialect);
+        var visitor = _generator.Dialect.CreatePredicateVisitor<TEntity>(_mapping);
         var (whereClause, _) = visitor.Translate(state.Predicate, state.IgnoreCase);
 
         return $"{sql} WHERE {whereClause}";

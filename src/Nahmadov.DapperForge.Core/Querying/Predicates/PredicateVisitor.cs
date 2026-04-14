@@ -9,8 +9,13 @@ namespace Nahmadov.DapperForge.Core.Querying.Predicates;
 /// Typed wrapper over <see cref="SqlPredicateTranslator"/> that enforces compile-time safety
 /// on the entity type. All translation logic lives in <see cref="SqlPredicateTranslator"/>.
 /// </summary>
+/// <remarks>
+/// Dialect packages can subclass this visitor and supply a custom <see cref="SqlPredicateTranslator"/>
+/// (e.g. <c>SqlitePredicateTranslator</c>) via the protected constructor to add dialect-specific
+/// expression support without changing the public API.
+/// </remarks>
 /// <typeparam name="TEntity">The entity type being queried.</typeparam>
-public sealed class PredicateVisitor<TEntity> where TEntity : class
+public class PredicateVisitor<TEntity> where TEntity : class
 {
     private readonly SqlPredicateTranslator _inner;
 
@@ -19,6 +24,13 @@ public sealed class PredicateVisitor<TEntity> where TEntity : class
     /// </summary>
     public PredicateVisitor(EntityMapping mapping, ISqlDialect dialect)
         => _inner = new SqlPredicateTranslator(mapping, dialect);
+
+    /// <summary>
+    /// Initializes the visitor with a pre-built (possibly dialect-specific) translator.
+    /// Use this from subclasses to inject a custom <see cref="SqlPredicateTranslator"/>.
+    /// </summary>
+    protected PredicateVisitor(SqlPredicateTranslator translator)
+        => _inner = translator ?? throw new ArgumentNullException(nameof(translator));
 
     /// <summary>
     /// Translates a boolean predicate expression into a SQL WHERE clause and parameter bag.

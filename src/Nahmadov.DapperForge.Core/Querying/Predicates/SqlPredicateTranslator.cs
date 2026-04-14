@@ -27,8 +27,16 @@ namespace Nahmadov.DapperForge.Core.Querying.Predicates;
 /// <item>Boolean properties: prop, !prop, prop == true/false</item>
 /// <item>Collection Contains: list.Contains(prop) → IN clause</item>
 /// </list>
+/// <para><b>Extensibility:</b></para>
+/// <para>
+/// Dialect packages can subclass this translator and override <see cref="VisitMethodCall"/>
+/// to add dialect-specific function support (e.g. SQLite's <c>date()</c> / <c>datetime()</c>).
+/// Use the protected helper methods (<see cref="IsEntityProperty"/>, <see cref="GetColumnNameForMember"/>,
+/// <see cref="AppendSql(string)"/>, <see cref="AddParameter"/>) to emit SQL and parameters
+/// without exposing the internal <c>SqlExpressionBuilder</c>.
+/// </para>
 /// </remarks>
-internal sealed class SqlPredicateTranslator : ExpressionVisitor
+public class SqlPredicateTranslator : ExpressionVisitor
 {
     private readonly bool _defaultIgnoreCase;
     private readonly bool _treatEmptyStringAsNull;
@@ -196,6 +204,20 @@ internal sealed class SqlPredicateTranslator : ExpressionVisitor
 
         throw new NotSupportedException($"Method call '{node.Method.Name}' is not supported.");
     }
+
+    // ── Protected helpers for subclasses ──────────────────────────────────────
+
+    /// <summary>Returns <c>true</c> when the member expression refers to a mapped entity property.</summary>
+    protected bool IsEntityProperty(MemberExpression node) => _sqlBuilder.IsEntityProperty(node);
+
+    /// <summary>Returns the fully-qualified column reference (e.g. <c>a."Col"</c>) for a member expression.</summary>
+    protected string GetColumnNameForMember(MemberExpression node) => _sqlBuilder.GetColumnNameForMember(node);
+
+    /// <summary>Appends a raw SQL fragment to the output buffer.</summary>
+    protected void AppendSql(string sql) => _sqlBuilder.AppendSql(sql);
+
+    /// <summary>Adds a parameter to the bag and returns the formatted placeholder (e.g. <c>@p0</c>).</summary>
+    protected string AddParameter(object? value) => _sqlBuilder.AddParameter(value);
 
     protected override Expression VisitUnary(UnaryExpression node)
     {

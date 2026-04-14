@@ -220,7 +220,7 @@ internal sealed class SplitIncludeLoader
 
         if (filter is not null)
         {
-            var translator = new SqlPredicateTranslator(mapping, _dialect, alias: "a");
+            var translator = _dialect.CreatePredicateTranslator(mapping, alias: "a");
             var (filterSql, filterParams) = translator.Translate(filter);
             sql = $"{sql} AND {filterSql}";
             foreach (var (k, v) in filterParams)
