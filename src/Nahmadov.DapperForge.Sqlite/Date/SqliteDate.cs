@@ -84,4 +84,58 @@ public static class SqliteDate
         => throw new InvalidOperationException(
             $"{nameof(SqliteDate)}.{nameof(DateTime)} is an expression-tree marker only. " +
             "It must be used inside a LINQ predicate expression (e.g. WhereAsync / Where), not called directly.");
+
+    // ── String column overloads ───────────────────────────────────────────────
+
+    /// <summary>
+    /// Expression-tree marker for SQLite's <c>date(col)</c> function on a <see langword="string"/> column.
+    /// Use this when the entity stores dates as ISO-8601 strings (e.g. <c>"YYYY-MM-DD"</c> or
+    /// <c>"YYYY-MM-DD HH:MM:SS"</c>) and you need date-part extraction or normalisation.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// If the column already stores pure date strings in <c>"YYYY-MM-DD"</c> format, you can
+    /// compare them directly without this marker — ISO-8601 date strings sort correctly as
+    /// plain strings:
+    /// <code>
+    /// // This already works without SqliteDate:
+    /// await db.Orders.WhereAsync(o => o.Date >= "2024-01-01" &amp;&amp; o.Date &lt;= "2024-12-31");
+    /// </code>
+    /// Use <c>SqliteDate.Date</c> when the stored string contains a time part and you want to
+    /// filter on the date portion only:
+    /// <code>
+    /// // Column contains "2024-01-15 10:30:00", filter on date part:
+    /// await db.Orders.WhereAsync(o => SqliteDate.Date(o.CreatedDateStr) == "2024-01-15");
+    /// </code>
+    /// </para>
+    /// </remarks>
+    /// <param name="value">An entity <see langword="string"/> property (expression marker only).</param>
+    /// <returns>Never returns — throws if called outside an expression tree.</returns>
+    /// <exception cref="InvalidOperationException">Always thrown when invoked directly.</exception>
+    public static string Date(string value)
+        => throw new InvalidOperationException(
+            $"{nameof(SqliteDate)}.{nameof(Date)} is an expression-tree marker only. " +
+            "It must be used inside a LINQ predicate expression (e.g. WhereAsync / Where), not called directly.");
+
+    /// <summary>
+    /// Expression-tree marker for SQLite's <c>datetime(col)</c> function on a <see langword="string"/> column.
+    /// Use this when the entity stores datetime values as strings and you need normalised datetime comparisons.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Typical use case — combine a separate date string column and a time string column for a
+    /// full datetime comparison via raw SQL. For a single string column that already stores
+    /// <c>"YYYY-MM-DD HH:MM:SS"</c>, <c>datetime(col)</c> normalises the value for comparison:
+    /// <code>
+    /// await db.Events.WhereAsync(e =>
+    ///     SqliteDate.DateTime(e.StartsAtStr) &gt; "2024-01-15 09:00:00");
+    /// </code>
+    /// </para>
+    /// </remarks>
+    /// <param name="value">An entity <see langword="string"/> property (expression marker only).</param>
+    /// <exception cref="InvalidOperationException">Always thrown when invoked directly.</exception>
+    public static string DateTime(string value)
+        => throw new InvalidOperationException(
+            $"{nameof(SqliteDate)}.{nameof(DateTime)} is an expression-tree marker only. " +
+            "It must be used inside a LINQ predicate expression (e.g. WhereAsync / Where), not called directly.");
 }

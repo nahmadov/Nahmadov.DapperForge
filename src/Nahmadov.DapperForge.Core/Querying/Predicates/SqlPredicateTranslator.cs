@@ -115,6 +115,7 @@ public class SqlPredicateTranslator : ExpressionVisitor
         if (_booleanHandler.TryHandleBooleanComparison(node)) return node;
         if (_nullHandler.TryHandleNullComparison(node)) return node;
         if (_stringHandler.TryHandleStringEquality(node)) return node;
+        if (TryHandleStringOrderComparison(node)) return node;
 
         _sqlBuilder.AppendSql('(');
         Visit(node.Left);
@@ -123,6 +124,101 @@ public class SqlPredicateTranslator : ExpressionVisitor
         _sqlBuilder.AppendSql(')');
         return node;
     }
+
+    /// <summary>
+    /// Translates <c>string.Compare(entityProp, value) OP 0</c> and
+    /// <c>entityProp.CompareTo(value) OP 0</c> patterns into ordered SQL comparisons.
+    /// </summary>
+    /// <remarks>
+    /// C# does not allow <c>&gt;</c>, <c>&gt;=</c>, <c>&lt;</c>, <c>&lt;=</c> operators directly
+    /// on <see langword="string"/> operands. Use these idioms instead:
+    /// <code>
+    /// // Both forms translate to: a."Date" >= @p0
+    /// e => e.Date.CompareTo("2024-01-01") >= 0
+    /// e => string.Compare(e.Date, "2024-01-01") >= 0
+    /// </code>
+    /// Supported operators on the result: <c>== 0</c>, <c>!= 0</c>, <c>&gt; 0</c>,
+    /// <c>&gt;= 0</c>, <c>&lt; 0</c>, <c>&lt;= 0</c>.
+    /// </remarks>
+    private bool TryHandleStringOrderComparison(BinaryExpression node)
+    {
+        if (!IsComparisonToZero(node, out var call, out var sqlOp))
+            return false;
+
+        // instance form: entityProp.CompareTo(value)
+        if (call!.Method.Name == nameof(string.CompareTo)
+            && call.Method.DeclaringType == typeof(string)
+            && call.Object is MemberExpression instanceMember
+            && _sqlBuilder.IsEntityProperty(instanceMember))
+        {
+            var column = _sqlBuilder.GetColumnNameForMember(instanceMember);
+            var value  = ExpressionEvaluator.Evaluate(call.Arguments[0]);
+            _sqlBuilder.AppendSql($"({column} {sqlOp} {_sqlBuilder.AddParameter(value)})");
+            return true;
+        }
+
+        // static form: string.Compare(entityProp, value)
+        if (call.Method.Name == nameof(string.Compare)
+            && call.Method.DeclaringType == typeof(string)
+            && call.Arguments.Count >= 2
+            && call.Arguments[0] is MemberExpression staticMember
+            && _sqlBuilder.IsEntityProperty(staticMember))
+        {
+            var column = _sqlBuilder.GetColumnNameForMember(staticMember);
+            var value  = ExpressionEvaluator.Evaluate(call.Arguments[1]);
+            _sqlBuilder.AppendSql($"({column} {sqlOp} {_sqlBuilder.AddParameter(value)})");
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsComparisonToZero(
+        BinaryExpression node,
+        out MethodCallExpression? call,
+        out string sqlOp)
+    {
+        call  = null;
+        sqlOp = string.Empty;
+
+        if (!IsOrderingOperator(node.NodeType))
+            return false;
+
+        if (node.Left is MethodCallExpression leftCall && IsIntZero(node.Right))
+        {
+            call  = leftCall;
+            sqlOp = OrderingOperatorToSql(node.NodeType, flip: false);
+            return true;
+        }
+
+        if (node.Right is MethodCallExpression rightCall && IsIntZero(node.Left))
+        {
+            call  = rightCall;
+            sqlOp = OrderingOperatorToSql(node.NodeType, flip: true);
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsOrderingOperator(ExpressionType t) => t is
+        ExpressionType.Equal or ExpressionType.NotEqual or
+        ExpressionType.GreaterThan or ExpressionType.GreaterThanOrEqual or
+        ExpressionType.LessThan or ExpressionType.LessThanOrEqual;
+
+    private static bool IsIntZero(Expression expr)
+        => expr is ConstantExpression { Value: 0 };
+
+    private static string OrderingOperatorToSql(ExpressionType op, bool flip) => op switch
+    {
+        ExpressionType.Equal            => "=",
+        ExpressionType.NotEqual         => "<>",
+        ExpressionType.GreaterThan      => flip ? "<"  : ">",
+        ExpressionType.GreaterThanOrEqual => flip ? "<=" : ">=",
+        ExpressionType.LessThan         => flip ? ">"  : "<",
+        ExpressionType.LessThanOrEqual  => flip ? ">=" : "<=",
+        _ => throw new NotSupportedException($"Unsupported ordering operator: {op}")
+    };
 
     protected override Expression VisitMember(MemberExpression node)
     {

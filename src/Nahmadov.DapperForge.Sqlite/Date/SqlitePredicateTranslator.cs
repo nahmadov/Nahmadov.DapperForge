@@ -101,6 +101,12 @@ internal sealed class SqlitePredicateTranslator : SqlPredicateTranslator
         var sqlFn = fn == nameof(SqliteDate.Date) ? "date" : "datetime";
         var op = GetComparisonOperator(node.NodeType);
 
+        // Determine the CLR type of the entity property so we can choose the
+        // correct right-hand-side formatting strategy.
+        var colPropertyType = Nullable.GetUnderlyingType(((PropertyInfo)colMember!.Member).PropertyType)
+                              ?? ((PropertyInfo)colMember.Member).PropertyType;
+        var colIsString = colPropertyType == typeof(string);
+
         // Evaluate the right-hand side (constant, closure field, or property).
         var rightValue = EvaluateExpression(node.Right);
 
@@ -108,17 +114,23 @@ internal sealed class SqlitePredicateTranslator : SqlPredicateTranslator
         AppendSql($"{sqlFn}({column})");
         AppendSql(op);
 
-        if (fn == nameof(SqliteDate.Date))
+        if (fn == nameof(SqliteDate.Date) && !colIsString)
         {
-            // Wrap the parameter in date() so the comparison is always "YYYY-MM-DD" = "YYYY-MM-DD".
-            // SQLite's date() handles DateTime strings, DateOnly strings, and date-only strings.
+            // DateTime column: wrap the parameter in date() so the comparison is always
+            // "YYYY-MM-DD" = "YYYY-MM-DD", regardless of whether the runtime value is a
+            // DateTime, DateOnly, or already a date string.
             var paramPlaceholder = AddParameter(FormatDateValue(rightValue));
             AppendSql($"date({paramPlaceholder})");
         }
         else
         {
-            // For datetime(), Dapper already serialises DateTime as "YYYY-MM-DD HH:MM:SS"
-            // which matches datetime() output, so no wrapping is needed.
+            // String column (date or datetime stored as TEXT): the right-hand value is
+            // already a string — pass it through as-is. No date() wrap needed because
+            // SQLite string comparison on ISO-8601 values is correct, and the caller is
+            // responsible for supplying a properly formatted string literal.
+            //
+            // datetime() column: Dapper serialises DateTime as "YYYY-MM-DD HH:MM:SS"
+            // which matches datetime() output — no wrapping needed.
             AppendSql(AddParameter(rightValue));
         }
 
