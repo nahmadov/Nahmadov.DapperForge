@@ -9,6 +9,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Nahmadov.DapperForge.SqlServer\Nahmadov.DapperForge.SqlServer.csproj" />
     <ProjectReference Include="..\..\src\Nahmadov.DapperForge.Oracle\Nahmadov.DapperForge.Oracle.csproj" />
+    <ProjectReference Include="..\..\src\Nahmadov.DapperForge.Sqlite\Nahmadov.DapperForge.Sqlite.csproj" />
   </ItemGroup>
 
   <ItemGroup>
