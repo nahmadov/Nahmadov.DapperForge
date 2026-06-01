@@ -10,6 +10,7 @@ using Nahmadov.DapperForge.Core.Context.Connection;
 using Nahmadov.DapperForge.Core.Infrastructure.Exceptions;
 using Nahmadov.DapperForge.Core.Abstractions;
 using Nahmadov.DapperForge.Core.Modeling.Mapping;
+using Nahmadov.DapperForge.Core.Mutations.Bulk;
 using Nahmadov.DapperForge.Core.Querying.Execution;
 using Nahmadov.DapperForge.Core.Querying.Sql;
 using Nahmadov.DapperForge.Core.Schema;
@@ -216,6 +217,36 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
     public Task CreateTempTableLikeAsync<TEntity>(string name, IDbConnection connection, CancellationToken ct = default)
         where TEntity : class
         => Set<TEntity>().CreateTempTableLikeAsync(name, connection, ct);
+
+    /// <summary>
+    /// Bulk-copies the rows of a <see cref="DataTable"/> into a destination table. The
+    /// <see cref="DataTable"/> column names must match the destination columns. SQL Server uses
+    /// <c>SqlBulkCopy</c>; SQLite uses a batched-insert fallback.
+    /// </summary>
+    /// <param name="rows">The rows to copy.</param>
+    /// <param name="destinationTable">The destination table name.</param>
+    /// <param name="connection">An open connection (temp tables are connection-scoped).</param>
+    /// <param name="options">Optional bulk-copy options.</param>
+    /// <param name="ct">A cancellation token.</param>
+    /// <returns>The number of rows copied.</returns>
+    /// <exception cref="DapperConfigurationException">The configured dialect does not support bulk copy.</exception>
+    public Task<int> BulkCopyAsync(
+        DataTable rows,
+        string destinationTable,
+        IDbConnection connection,
+        BulkCopyOptions? options = null,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(rows);
+        ArgumentNullException.ThrowIfNull(connection);
+
+        if (!Dialect.SupportsBulkCopy)
+            throw new DapperConfigurationException(
+                $"Dialect '{Dialect.Name}' does not support bulk copy.");
+
+        var executor = Dialect.CreateBulkCopyExecutor();
+        return executor.BulkCopyAsync(connection, destinationTable, rows, options ?? new BulkCopyOptions(), ct);
+    }
 
     /// <summary>
     /// Begins a database transaction with the default isolation level (ReadCommitted).

@@ -3,6 +3,7 @@ using System.Data;
 using Nahmadov.DapperForge.Core.Abstractions;
 using Nahmadov.DapperForge.Core.Modeling.Mapping;
 using Nahmadov.DapperForge.Core.Modeling.Schema;
+using Nahmadov.DapperForge.Core.Mutations.Bulk;
 using Nahmadov.DapperForge.Core.Querying.Predicates;
 using Nahmadov.DapperForge.Sqlite.Date;
 
@@ -142,4 +143,12 @@ public class SqliteDialect : ISqlDialect
     /// </summary>
     public string BuildCreateTempTable(string tempName, string columnsDdl)
         => $"CREATE TEMP TABLE {tempName} ({columnsDdl})";
+
+    /// <inheritdoc />
+    public bool SupportsBulkCopy => true;
+
+    /// <summary>
+    /// Returns the batched parameterized-insert fallback (SQLite has no native bulk-copy primitive).
+    /// </summary>
+    public IBulkCopyExecutor CreateBulkCopyExecutor() => new BatchedInsertBulkCopyExecutor(this);
 }

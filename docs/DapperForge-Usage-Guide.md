@@ -896,27 +896,51 @@ public class JsonTypeHandler : SqlMapper.TypeHandler<JObject>
 
 ### Bulk Operations Pattern
 
+For large inserts, prefer the bulk APIs over a per-row loop:
+
 ```csharp
-// Pattern for bulk inserts
-var customers = GetCustomersToInsert(); // 1000+ items
+// Set-based insert / upsert
+await db.Customers.BulkInsertAsync(customers);
+await db.Customers.BulkMergeAsync(customers);
 
-var scope = await db.BeginTransactionScopeAsync();
-try
-{
-    foreach (var customer in customers)
-    {
-        await db.Customers.InsertAsync(customer, scope.Transaction);
-    }
-
-    scope.Complete();
-}
-finally
-{
-    scope.Dispose();
-}
-
-// For true bulk operations, use SqlBulkCopy or Oracle bulk APIs directly
+// Bulk copy (SQL Server SqlBulkCopy / SQLite batched-insert fallback) into a real or temp table:
+using var scope = db.CreateConnectionScope();
+await db.Customers.CreateTempTableLikeAsync("#StagingCustomers", scope.Connection);
+await db.Customers.BulkCopyAsync(customers, "#StagingCustomers", scope.Connection);
 ```
+
+See [Bulk Copy](#bulk-copy) below for details and options.
+
+### Bulk Copy
+
+`BulkCopyAsync` performs a first-class bulk insert using the entity mapping for column mappings, so
+you no longer write `new SqlBulkCopy(...)` + manual `ColumnMappings` or hand-built `DataTable`s.
+Available on SQL Server (`SqlBulkCopy`) and SQLite (batched parameterized-insert fallback).
+
+```csharp
+using var scope = db.CreateConnectionScope();
+
+// Stage into a temp table that mirrors the entity, then bulk-copy into it:
+await db.Customers.CreateTempTableLikeAsync("#StagingCustomers", scope.Connection);
+int copied = await db.Customers.BulkCopyAsync(customers, "#StagingCustomers", scope.Connection);
+
+// DataTable-driven overload on the context:
+int copied2 = await db.BulkCopyAsync(dataTable, "#StagingCustomers", scope.Connection);
+```
+
+`BulkCopyOptions` tunes the operation:
+
+| Option | Description |
+|--------|-------------|
+| `BatchSize` | Rows per batch (`0` = provider default; SQLite fills each statement up to the parameter cap). |
+| `TimeoutSeconds` | Command/operation timeout (default 30). |
+| `EnableStreaming` | SQL Server streaming (`SqlBulkCopy.EnableStreaming`); ignored by SQLite. |
+| `UseTableLock` | SQL Server `TableLock`; ignored by SQLite. |
+
+Because both the temp-table DDL and the bulk-copy column mappings come from the same `EntityMapping`,
+`CreateTempTableLikeAsync<T>` and `BulkCopyAsync(rows, "#tmp")` compose cleanly. The SQLite fallback
+batches multi-row `INSERT`s inside a single transaction, splitting batches to respect the 999-parameter
+limit.
 
 ## Best Practices
 

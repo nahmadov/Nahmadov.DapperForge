@@ -253,5 +253,49 @@ public sealed class DapperSet<TEntity> where TEntity : class
     }
 
     #endregion
+
+    #region Bulk Copy
+
+    /// <summary>
+    /// Bulk-copies entities into a destination table (e.g. a temp table created by
+    /// <see cref="CreateTempTableLikeAsync(string, IDbConnection, CancellationToken)"/>). Column
+    /// mappings are derived from this entity's mapping, so the source columns match the temp-table
+    /// shape. SQL Server uses <c>SqlBulkCopy</c>; SQLite uses a batched-insert fallback.
+    /// </summary>
+    /// <param name="rows">The entities to copy.</param>
+    /// <param name="destinationTable">The destination table name.</param>
+    /// <param name="connection">An open connection (temp tables are connection-scoped).</param>
+    /// <param name="options">Optional bulk-copy options.</param>
+    /// <param name="ct">A cancellation token.</param>
+    /// <returns>The number of rows copied.</returns>
+    /// <exception cref="DapperConfigurationException">The dialect does not support bulk copy.</exception>
+    public Task<int> BulkCopyAsync(
+        IEnumerable<TEntity> rows,
+        string destinationTable,
+        IDbConnection connection,
+        BulkCopyOptions? options = null,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(rows);
+        ArgumentNullException.ThrowIfNull(connection);
+
+        var executor = CreateBulkCopyExecutor();
+        var dataTable = EntityDataTableFactory.ToDataTable(_mapping, rows);
+        return executor.BulkCopyAsync(connection, destinationTable, dataTable, options ?? new BulkCopyOptions(), ct);
+    }
+
+    private IBulkCopyExecutor CreateBulkCopyExecutor()
+    {
+        if (!_generator.Dialect.SupportsBulkCopy)
+        {
+            throw new DapperConfigurationException(
+                typeof(TEntity).Name,
+                $"Dialect '{_generator.DialectName}' does not support bulk copy.");
+        }
+
+        return _generator.Dialect.CreateBulkCopyExecutor();
+    }
+
+    #endregion
 }
 

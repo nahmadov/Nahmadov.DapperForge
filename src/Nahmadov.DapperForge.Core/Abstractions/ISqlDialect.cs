@@ -69,6 +69,21 @@ public interface ISqlDialect
         => throw new NotSupportedException(
             $"Dialect '{Name}' does not support session temp tables.");
 
+    // ── Bulk copy ─────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Indicates whether the dialect supports bulk copy. Defaults to <see langword="false"/>;
+    /// SQL Server (native <c>SqlBulkCopy</c>) and SQLite (batched-insert fallback) override to <see langword="true"/>.
+    /// </summary>
+    bool SupportsBulkCopy => false;
+
+    /// <summary>
+    /// Creates the provider-specific bulk-copy executor.
+    /// </summary>
+    /// <exception cref="NotSupportedException">The dialect does not support bulk copy.</exception>
+    IBulkCopyExecutor CreateBulkCopyExecutor()
+        => throw new NotSupportedException($"Dialect '{Name}' does not support bulk copy.");
+
     // ── Predicate translator factory ──────────────────────────────────────────
 
     /// <summary>

@@ -212,6 +212,28 @@ var result = await db.Products.BulkMergeAsync(
 | `InsertOnly` | Only insert rows that don't exist |
 | `UpdateOnly` | Only update existing rows |
 
+### Bulk Copy
+
+First-class bulk insert that derives column mappings from the entity mapping — no more hand-written
+`new SqlBulkCopy(...)` + `ColumnMappings` or manual `DataTable` plumbing. SQL Server uses `SqlBulkCopy`;
+SQLite uses a batched parameterized-insert fallback.
+
+```csharp
+using var scope = db.CreateConnectionScope();
+
+// Stage into a temp table that mirrors the entity, then bulk-copy into it:
+await db.Customers.CreateTempTableLikeAsync("#StagingCustomers", scope.Connection);
+int copied = await db.Customers.BulkCopyAsync(customers, "#StagingCustomers", scope.Connection);
+
+// DataTable-driven overload on the context:
+await db.BulkCopyAsync(dataTable, "#StagingCustomers", scope.Connection);
+```
+
+Tune with `BulkCopyOptions` (`BatchSize`, `TimeoutSeconds`, `EnableStreaming`, `UseTableLock` —
+SqlBulkCopy-specific options are ignored by SQLite). The temp-table DDL and bulk-copy column mappings
+share the same `EntityMapping`, so `CreateTempTableLikeAsync<T>` and `BulkCopyAsync(rows, "#tmp")`
+compose cleanly. Dialects without bulk-copy support throw (`ISqlDialect.SupportsBulkCopy == false`).
+
 ### Session Temp Tables
 
 Create a session temp table without hand-writing DDL. Column types come from the same mapping

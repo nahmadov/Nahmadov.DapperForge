@@ -1219,6 +1219,31 @@ finally
 }
 ```
 
+### Bulk Copy
+
+`BulkCopyAsync` performs a first-class bulk insert, deriving column mappings from the entity mapping
+(entity-driven) or the `DataTable` columns (DataTable-driven). The bulk-copy strategy is provided by
+the dialect via `ISqlDialect.CreateBulkCopyExecutor()` (an `IBulkCopyExecutor`):
+
+- **SQL Server** (`Nahmadov.DapperForge.SqlServer`) — backed by `Microsoft.Data.SqlClient.SqlBulkCopy`. `SqlBulkCopy` is never referenced from Core.
+- **SQLite** — batched, parameterized multi-row `INSERT` inside a single transaction, splitting batches to respect the 999-parameter limit.
+- Other dialects — `ISqlDialect.SupportsBulkCopy == false`; calling bulk copy throws.
+
+| Overload | Source |
+|----------|--------|
+| `DapperSet<T>.BulkCopyAsync(rows, destinationTable, connection, options?, ct)` | Entities; columns from `EntityMapping` (generated columns excluded), consistent with `CreateTempTableLikeAsync`. |
+| `DapperDbContext.BulkCopyAsync(dataTable, destinationTable, connection, options?, ct)` | A `DataTable`; column names must match the destination. |
+
+`BulkCopyOptions`: `BatchSize` (0 = provider default), `TimeoutSeconds` (30), `EnableStreaming`
+(SQL Server only), `UseTableLock` (SQL Server only). Both overloads return the number of rows copied.
+
+```csharp
+using var scope = db.CreateConnectionScope();
+await db.Customers.CreateTempTableLikeAsync("#Staging", scope.Connection);
+int copied = await db.Customers.BulkCopyAsync(customers, "#Staging", scope.Connection,
+    new BulkCopyOptions { BatchSize = 5000, UseTableLock = true });
+```
+
 ---
 
 ## Include & ThenInclude

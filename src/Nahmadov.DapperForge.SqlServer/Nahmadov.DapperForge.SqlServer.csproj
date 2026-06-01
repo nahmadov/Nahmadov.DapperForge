@@ -28,4 +28,8 @@ v2.2.0:
     <ProjectReference Include="..\Nahmadov.DapperForge.Core\Nahmadov.DapperForge.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Nahmadov.DapperForge.UnitTests" />
+  </ItemGroup>
+
 </Project>

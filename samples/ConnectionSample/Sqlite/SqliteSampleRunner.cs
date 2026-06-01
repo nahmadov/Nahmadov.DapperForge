@@ -30,6 +30,7 @@ public class SqliteSampleRunner(SqliteDbContext db)
         await RunTempTableSampleAsync();
         await RunDataTableTempTableSampleAsync();
         await RunEntityTempTableSampleAsync();
+        await RunBulkCopySampleAsync();
 
         Print("=== SQLite sample complete ===\n");
     }
@@ -110,6 +111,33 @@ public class SqliteSampleRunner(SqliteDbContext db)
             @"SELECT name FROM sqlite_temp_master WHERE type='table' AND name LIKE 'TempEvents%' ORDER BY name");
 
         Print($"  Created entity-mirroring temp tables: {string.Join(", ", names)}");
+        Print("");
+    }
+
+    // ── Bulk copy into a temp table (Phase 5) ─────────────────────────────────
+
+    private async Task RunBulkCopySampleAsync()
+    {
+        Print("── Bulk copy (entity-driven) into a temp table ───────────────────");
+
+        using var scope = _db.CreateConnectionScope();
+
+        // Create a staging table mirroring the entity, then bulk-copy rows into it.
+        await _db.Events.CreateTempTableLikeAsync("TempBulkEvents", scope.Connection);
+
+        var batch = Enumerable.Range(1, 1000).Select(i => new CalendarEvent
+        {
+            Title = $"Generated event {i}",
+            OccursAt = DateTime.Today.AddMinutes(i),
+            Category = i % 2 == 0 ? "Work" : "Social"
+        });
+
+        var copied = await _db.Events.BulkCopyAsync(batch, "TempBulkEvents", scope.Connection);
+
+        var count = await scope.Connection.ExecuteScalarAsync<long>(
+            @"SELECT COUNT(*) FROM ""TempBulkEvents""");
+
+        Print($"  Bulk-copied {copied} rows; temp table now holds {count} rows.");
         Print("");
     }
 

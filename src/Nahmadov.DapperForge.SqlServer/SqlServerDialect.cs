@@ -131,6 +131,14 @@ public class SqlServerDialect : ISqlDialect, IBulkSqlDialect
     public string BuildCreateTempTable(string tempName, string columnsDdl)
         => $"CREATE TABLE {tempName} ({columnsDdl})";
 
+    /// <inheritdoc />
+    public bool SupportsBulkCopy => true;
+
+    /// <summary>
+    /// Returns a <c>SqlBulkCopy</c>-backed bulk-copy executor.
+    /// </summary>
+    public IBulkCopyExecutor CreateBulkCopyExecutor() => new SqlBulkCopyExecutor();
+
     #region IBulkSqlDialect Implementation
 
     /// <inheritdoc />
