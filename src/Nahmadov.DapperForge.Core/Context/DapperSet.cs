@@ -8,6 +8,7 @@ using Nahmadov.DapperForge.Core.Querying.Sql;
 using Nahmadov.DapperForge.Core.Infrastructure.Exceptions;
 using Nahmadov.DapperForge.Core.Abstractions;
 using Nahmadov.DapperForge.Core.Modeling.Mapping;
+using Nahmadov.DapperForge.Core.Schema;
 
 namespace Nahmadov.DapperForge.Core.Context;
 /// <summary>
@@ -197,6 +198,59 @@ public sealed class DapperSet<TEntity> where TEntity : class
         => BulkExecutor.BulkMergeAsync(entities,
             new BulkMergeOptions { MatchColumns = matchColumns },
             transaction);
+
+    #endregion
+
+    #region Temp Tables
+
+    /// <summary>
+    /// Creates a session temp table whose shape mirrors this entity, using the same column names and
+    /// types DapperForge resolves for the entity. Database-generated / identity columns are excluded.
+    /// </summary>
+    /// <param name="name">The temp-table name (the dialect normalises it).</param>
+    /// <param name="connection">An open connection to create the temp table on.</param>
+    /// <param name="ct">A cancellation token.</param>
+    public Task CreateTempTableLikeAsync(string name, IDbConnection connection, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(connection);
+
+        var builder = _context.TempTable(name);
+        EntityTempTableSchema.Populate(builder, _mapping);
+        return builder.CreateAsync(connection, ct);
+    }
+
+    /// <summary>
+    /// Creates a session temp table mirroring only the chosen columns of this entity, in the given
+    /// order. Explicitly chosen columns are emitted even if they are database-generated.
+    /// </summary>
+    /// <param name="name">The temp-table name (the dialect normalises it).</param>
+    /// <param name="connection">An open connection to create the temp table on.</param>
+    /// <param name="columns">Property selectors choosing which columns to include.</param>
+    public Task CreateTempTableLikeAsync(
+        string name,
+        IDbConnection connection,
+        params Expression<Func<TEntity, object?>>[] columns)
+    {
+        ArgumentNullException.ThrowIfNull(connection);
+
+        var builder = _context.TempTable(name);
+        var selected = columns is { Length: > 0 }
+            ? columns.Select(GetPropertyName).ToList()
+            : null;
+        EntityTempTableSchema.Populate(builder, _mapping, selected);
+        return builder.CreateAsync(connection);
+    }
+
+    private static string GetPropertyName(Expression<Func<TEntity, object?>> expr)
+    {
+        if (expr.Body is MemberExpression m)
+            return m.Member.Name;
+        if (expr.Body is UnaryExpression u && u.Operand is MemberExpression m2)
+            return m2.Member.Name;
+
+        throw new InvalidOperationException(
+            "Only simple property expressions (e => e.Property) are supported for column selection.");
+    }
 
     #endregion
 }

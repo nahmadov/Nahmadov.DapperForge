@@ -29,6 +29,7 @@ public class SqliteSampleRunner(SqliteDbContext db)
         await RunStringColumnSamplesAsync();
         await RunTempTableSampleAsync();
         await RunDataTableTempTableSampleAsync();
+        await RunEntityTempTableSampleAsync();
 
         Print("=== SQLite sample complete ===\n");
     }
@@ -87,6 +88,28 @@ public class SqliteSampleRunner(SqliteDbContext db)
             @"SELECT COUNT(*) FROM sqlite_temp_master WHERE type='table' AND name='TempImport'");
 
         Print($"  Derived temp table from DataTable ({schema.Columns.Count} columns); exists in session: {exists == 1}");
+        Print("");
+    }
+
+    // ── Temp table mirroring an entity (Phase 4) ──────────────────────────────
+
+    private async Task RunEntityTempTableSampleAsync()
+    {
+        Print("── Session temp table (mirroring an entity) ──────────────────────");
+
+        using var scope = _db.CreateConnectionScope();
+
+        // Mirror the full CalendarEvent shape (identity Id excluded automatically).
+        await _db.Events.CreateTempTableLikeAsync("TempEventsAll", scope.Connection);
+
+        // Mirror only a chosen subset of columns.
+        await _db.Events.CreateTempTableLikeAsync(
+            "TempEventsSubset", scope.Connection, e => e.Title, e => e.OccursAt);
+
+        var names = await scope.Connection.QueryAsync<string>(
+            @"SELECT name FROM sqlite_temp_master WHERE type='table' AND name LIKE 'TempEvents%' ORDER BY name");
+
+        Print($"  Created entity-mirroring temp tables: {string.Join(", ", names)}");
         Print("");
     }
 

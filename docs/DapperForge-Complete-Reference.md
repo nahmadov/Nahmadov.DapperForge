@@ -879,6 +879,25 @@ using var scope = db.CreateConnectionScope();
 await db.CreateTempTableFromAsync("TempImport", dataTable, scope.Connection);
 ```
 
+**Mirroring an entity** — `DapperSet<T>.CreateTempTableLikeAsync(...)` (and the convenience
+`DapperDbContext.CreateTempTableLikeAsync<T>(...)`) build the temp table from a mapped entity's
+`EntityMapping`, using resolved column names (respecting `HasColumnName`) and types.
+
+| Overload | Behavior |
+|----------|----------|
+| `CreateTempTableLikeAsync(name, connection, ct)` | Mirrors all writable columns; excludes database-generated / identity columns. |
+| `CreateTempTableLikeAsync(name, connection, params columns)` | Mirrors only the chosen columns, in order; explicitly chosen generated columns are included. |
+| `DapperDbContext.CreateTempTableLikeAsync<T>(name, connection, ct)` | Convenience wrapper over `Set<T>().CreateTempTableLikeAsync(...)`. |
+
+```csharp
+using var scope = db.CreateConnectionScope();
+await db.Customers.CreateTempTableLikeAsync("#Staging", scope.Connection);
+await db.Customers.CreateTempTableLikeAsync("#Staging", scope.Connection, c => c.Id, c => c.Name);
+```
+
+Because the temp-table shape and the bulk-copy column mappings derive from the same `EntityMapping`,
+`CreateTempTableLikeAsync<T>` composes cleanly with a subsequent bulk copy into that table.
+
 ### Relationship Configuration
 
 DapperForge supports configuring foreign key relationships using either fluent API or attributes.

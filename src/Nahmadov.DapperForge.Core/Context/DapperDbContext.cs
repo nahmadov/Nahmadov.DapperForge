@@ -206,6 +206,18 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
     }
 
     /// <summary>
+    /// Creates a session temp table whose shape mirrors the mapped entity <typeparamref name="TEntity"/>.
+    /// Convenience wrapper over <see cref="DapperSet{TEntity}.CreateTempTableLikeAsync(string, IDbConnection, CancellationToken)"/>.
+    /// </summary>
+    /// <typeparam name="TEntity">The entity type whose mapping defines the temp-table shape.</typeparam>
+    /// <param name="name">The temp-table name (the dialect normalises it).</param>
+    /// <param name="connection">An open connection to create the temp table on.</param>
+    /// <param name="ct">A cancellation token.</param>
+    public Task CreateTempTableLikeAsync<TEntity>(string name, IDbConnection connection, CancellationToken ct = default)
+        where TEntity : class
+        => Set<TEntity>().CreateTempTableLikeAsync(name, connection, ct);
+
+    /// <summary>
     /// Begins a database transaction with the default isolation level (ReadCommitted).
     /// </summary>
     /// <returns>An <see cref="IDbTransaction"/> wrapping the underlying transaction scope.</returns>

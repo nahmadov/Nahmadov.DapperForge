@@ -241,6 +241,20 @@ await db.CreateTempTableFromAsync("TempImport", dataTable, scope.Connection);
 // Each DataColumn → a column: type from DataType, nullability from AllowDBNull, length from MaxLength.
 ```
 
+Or mirror a mapped entity — the temp table uses the same column names and types as the entity
+(identity/generated columns excluded), so it composes cleanly with bulk copy into the staging table:
+
+```csharp
+await db.Customers.CreateTempTableLikeAsync("#StagingCustomers", scope.Connection);
+
+// Subset of columns, in the given order:
+await db.Customers.CreateTempTableLikeAsync(
+    "#StagingCustomers", scope.Connection, c => c.Id, c => c.Name);
+
+// Convenience by type:
+await db.CreateTempTableLikeAsync<Customer>("#StagingCustomers", scope.Connection);
+```
+
 Other dialects throw `NotSupportedException` (`ISqlDialect.SupportsSessionTempTables == false`).
 
 ### Transactions

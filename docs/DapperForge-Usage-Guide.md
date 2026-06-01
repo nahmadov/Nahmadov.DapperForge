@@ -781,6 +781,28 @@ await db.CreateTempTableFromAsync("TempImport", dataTable, scope.Connection);
 Each `DataColumn` becomes a temp-table column: the SQL type is inferred from `DataColumn.DataType`,
 nullability from `DataColumn.AllowDBNull`, and string length from `DataColumn.MaxLength` (when > 0).
 
+#### Mirroring a mapped entity
+
+Create a staging table that matches an entity's resolved column names (respecting `HasColumnName`) and
+types. Database-generated / identity columns are excluded by default, so the shape is insert-ready:
+
+```csharp
+using var scope = db.CreateConnectionScope();
+
+// Full entity shape (identity columns excluded):
+await db.Customers.CreateTempTableLikeAsync("#StagingCustomers", scope.Connection);
+
+// Only a chosen subset, in the given order (explicitly chosen generated columns are included):
+await db.Customers.CreateTempTableLikeAsync(
+    "#StagingCustomers", scope.Connection, c => c.Id, c => c.Name);
+
+// Convenience overload on the context:
+await db.CreateTempTableLikeAsync<Customer>("#StagingCustomers", scope.Connection);
+```
+
+Because the temp shape and the bulk-copy column mappings come from the same `EntityMapping`,
+`CreateTempTableLikeAsync<T>` and a subsequent bulk copy into that table compose cleanly.
+
 ### Alternate Keys
 
 ```csharp
