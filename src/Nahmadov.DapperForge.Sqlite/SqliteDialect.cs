@@ -2,6 +2,7 @@ using System.Data;
 
 using Nahmadov.DapperForge.Core.Abstractions;
 using Nahmadov.DapperForge.Core.Modeling.Mapping;
+using Nahmadov.DapperForge.Core.Modeling.Schema;
 using Nahmadov.DapperForge.Core.Querying.Predicates;
 using Nahmadov.DapperForge.Sqlite.Date;
 
@@ -80,5 +81,44 @@ public class SqliteDialect : ISqlDialect
 
         dbType = default;
         return false;
+    }
+
+    /// <summary>
+    /// Resolves a logical column type to a SQLite storage-class affinity name
+    /// (<c>INTEGER</c>, <c>REAL</c>, <c>NUMERIC</c>, <c>TEXT</c>, <c>BLOB</c>).
+    /// </summary>
+    public string GetColumnTypeSql(SqlColumnType type, ColumnTypeFacets facets)
+    {
+        return type switch
+        {
+            SqlColumnType.Boolean
+                or SqlColumnType.TinyInt
+                or SqlColumnType.SmallInt
+                or SqlColumnType.Int
+                or SqlColumnType.BigInt => "INTEGER",
+
+            SqlColumnType.Float
+                or SqlColumnType.Real => "REAL",
+
+            SqlColumnType.Decimal
+                or SqlColumnType.Money => "NUMERIC",
+
+            SqlColumnType.Date
+                or SqlColumnType.Time
+                or SqlColumnType.DateTime
+                or SqlColumnType.DateTime2
+                or SqlColumnType.DateTimeOffset
+                or SqlColumnType.Char
+                or SqlColumnType.VarChar
+                or SqlColumnType.NChar
+                or SqlColumnType.NVarChar
+                or SqlColumnType.Text
+                or SqlColumnType.Guid => "TEXT",
+
+            SqlColumnType.Binary
+                or SqlColumnType.VarBinary => "BLOB",
+
+            _ => throw new NotSupportedException($"Unsupported SQL column type '{type}' for SQLite.")
+        };
     }
 }

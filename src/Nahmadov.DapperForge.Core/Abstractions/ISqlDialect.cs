@@ -1,6 +1,7 @@
 using System.Data;
 
 using Nahmadov.DapperForge.Core.Modeling.Mapping;
+using Nahmadov.DapperForge.Core.Modeling.Schema;
 using Nahmadov.DapperForge.Core.Querying.Predicates;
 
 namespace Nahmadov.DapperForge.Core.Abstractions;
@@ -27,6 +28,20 @@ public interface ISqlDialect
     string FormatBoolean(bool value);
 
     bool TryMapDbType(Type clrType, out DbType dbType);
+
+    // ── Schema / column type resolution ───────────────────────────────────────
+
+    /// <summary>
+    /// Resolves a dialect-agnostic <see cref="SqlColumnType"/> and its facets to a concrete DDL
+    /// type name (e.g. <c>nvarchar(50)</c>, <c>decimal(18,4)</c>, <c>INTEGER</c>).
+    /// </summary>
+    /// <remarks>
+    /// The default implementation throws <see cref="NotSupportedException"/>. Dialects that support
+    /// temp-table / DDL generation (SQL Server, SQLite) override this.
+    /// </remarks>
+    string GetColumnTypeSql(SqlColumnType type, ColumnTypeFacets facets)
+        => throw new NotSupportedException(
+            $"Dialect '{Name}' does not support SQL column type resolution.");
 
     // ── Predicate translator factory ──────────────────────────────────────────
 

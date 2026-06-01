@@ -139,6 +139,8 @@ internal static class EntityMappingResolver
             var maxLength = propConfig?.MaxLength ?? attrSnapshot?.MaxLength;
             var isReadOnly = propConfig?.IsReadOnly ?? false;
             var sequenceName = propConfig?.SequenceName;
+            var configuredColumnType = propConfig?.ColumnType;
+            var configuredFacets = propConfig?.ColumnTypeFacets ?? default;
 
             mappings.Add(new PropertyMapping(
                 prop,
@@ -147,7 +149,9 @@ internal static class EntityMappingResolver
                 isReadOnly,
                 isRequired,
                 maxLength,
-                sequenceName));
+                sequenceName,
+                configuredColumnType,
+                configuredFacets));
         }
 
         return mappings;

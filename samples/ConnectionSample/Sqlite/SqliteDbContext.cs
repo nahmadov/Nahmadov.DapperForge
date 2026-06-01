@@ -1,6 +1,7 @@
 using Nahmadov.DapperForge.Core.Context;
 using Nahmadov.DapperForge.Core.Context.Options;
 using Nahmadov.DapperForge.Core.Modeling.Builders;
+using Nahmadov.DapperForge.Core.Modeling.Schema;
 
 namespace ConnectionSample.Sqlite;
 
@@ -22,8 +23,9 @@ public class SqliteDbContext(DapperDbContextOptions<SqliteDbContext> options) : 
         {
             b.ToTable("Appointments");
             b.Property(a => a.Title).HasMaxLength(200).IsRequired();
-            b.Property(a => a.Date).HasMaxLength(10);
-            b.Property(a => a.Time).HasMaxLength(8);
+            // Explicit column types drive temp-table DDL / bulk copy (Phase 1+).
+            b.Property(a => a.Date).HasColumnType(SqlColumnType.Char, 10);
+            b.Property(a => a.Time).HasColumnType(SqlColumnType.Char, 8);
             b.Property(a => a.Status).HasMaxLength(50);
         });
     }

@@ -1,7 +1,9 @@
 using System.Data;
+using System.Globalization;
 using System.Text;
 
 using Nahmadov.DapperForge.Core.Abstractions;
+using Nahmadov.DapperForge.Core.Modeling.Schema;
 
 namespace Nahmadov.DapperForge.SqlServer;
 
@@ -61,6 +63,53 @@ public class SqlServerDialect : ISqlDialect, IBulkSqlDialect
         dbType = default;
         return false;
     }
+
+    /// <summary>
+    /// Resolves a logical column type to its SQL Server DDL type name.
+    /// </summary>
+    public string GetColumnTypeSql(SqlColumnType type, ColumnTypeFacets facets)
+    {
+        return type switch
+        {
+            SqlColumnType.Boolean => "bit",
+            SqlColumnType.TinyInt => "tinyint",
+            SqlColumnType.SmallInt => "smallint",
+            SqlColumnType.Int => "int",
+            SqlColumnType.BigInt => "bigint",
+            SqlColumnType.Decimal => $"decimal({Precision(facets, 18)},{Scale(facets, 2)})",
+            SqlColumnType.Money => "money",
+            SqlColumnType.Float => "float",
+            SqlColumnType.Real => "real",
+            SqlColumnType.Date => "date",
+            SqlColumnType.Time => "time",
+            SqlColumnType.DateTime => "datetime",
+            SqlColumnType.DateTime2 => "datetime2",
+            SqlColumnType.DateTimeOffset => "datetimeoffset",
+            SqlColumnType.Char => $"char({Length(facets, 1)})",
+            SqlColumnType.VarChar => $"varchar({LengthOrMax(facets)})",
+            SqlColumnType.NChar => $"nchar({Length(facets, 1)})",
+            SqlColumnType.NVarChar => $"nvarchar({LengthOrMax(facets)})",
+            SqlColumnType.Text => "nvarchar(max)",
+            SqlColumnType.Binary => $"binary({Length(facets, 1)})",
+            SqlColumnType.VarBinary => $"varbinary({LengthOrMax(facets)})",
+            SqlColumnType.Guid => "uniqueidentifier",
+            _ => throw new NotSupportedException($"Unsupported SQL column type '{type}' for SQL Server.")
+        };
+    }
+
+    private static string LengthOrMax(ColumnTypeFacets facets)
+        => facets.IsMaxLength || facets.Length is null or 0
+            ? "max"
+            : facets.Length.Value.ToString(CultureInfo.InvariantCulture);
+
+    private static string Length(ColumnTypeFacets facets, int fallback)
+        => (facets.Length is > 0 ? facets.Length.Value : fallback).ToString(CultureInfo.InvariantCulture);
+
+    private static string Precision(ColumnTypeFacets facets, int fallback)
+        => (facets.Precision ?? fallback).ToString(CultureInfo.InvariantCulture);
+
+    private static string Scale(ColumnTypeFacets facets, int fallback)
+        => (facets.Scale ?? fallback).ToString(CultureInfo.InvariantCulture);
 
     #region IBulkSqlDialect Implementation
 
