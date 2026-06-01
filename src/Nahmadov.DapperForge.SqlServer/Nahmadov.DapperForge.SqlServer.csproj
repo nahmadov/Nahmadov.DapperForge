@@ -6,8 +6,10 @@
     <Description>SQL Server provider for DapperForge using Dapper and Microsoft.Data.SqlClient.</Description>
     <PackageTags>dapper sqlserver orm toolkit</PackageTags>
     <PackageReleaseNotes>
-Unreleased:
-- Core: unified SqlPredicateTranslator; AsSplitQuery Include filter bug fixed.
+v2.5.0:
+- GetColumnTypeSql resolves SqlColumnType to concrete SQL Server DDL types (nvarchar(n), decimal(p,s), datetime2, ...).
+- Session temp-table DDL: CREATE TABLE #Name (...).
+- SqlBulkCopy-backed bulk copy executor for DapperSet.BulkCopyAsync / DapperDbContext.BulkCopyAsync.
 
 v2.2.0:
 - BulkInsertAsync and BulkMergeAsync (uses SQL Server MERGE statement).

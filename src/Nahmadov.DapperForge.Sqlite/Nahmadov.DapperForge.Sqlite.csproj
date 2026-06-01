@@ -6,6 +6,11 @@
     <Description>SQLite provider for DapperForge using Dapper and Microsoft.Data.Sqlite.</Description>
     <PackageTags>dapper sqlite orm toolkit</PackageTags>
     <PackageReleaseNotes>
+v2.5.0:
+- GetColumnTypeSql resolves SqlColumnType to SQLite storage affinities (INTEGER, REAL, NUMERIC, TEXT, BLOB).
+- Session temp-table DDL: CREATE TEMP TABLE "Name" (...).
+- Batched parameterized-insert bulk copy fallback (respects the 999-parameter limit) for DapperSet.BulkCopyAsync / DapperDbContext.BulkCopyAsync.
+
 Initial release:
 - Full DapperForge provider for SQLite via Microsoft.Data.Sqlite.
 - "identifier" quoting, @ parameter placeholders, last_insert_rowid() for identity.
