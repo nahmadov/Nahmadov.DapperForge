@@ -865,6 +865,20 @@ await db.TempTable("TmpHistDaily")
 **Generated DDL** — SQL Server: `CREATE TABLE #TmpHistDaily ( … )` (leading `#` is ensured);
 SQLite: `CREATE TEMP TABLE "TmpHistDaily" ( … )`.
 
+**From a `DataTable`** — `DapperDbContext.CreateTempTableFromAsync(name, dataTable, connection, ct)`
+derives the temp table from an ADO.NET `DataTable`, mapping each `DataColumn` as follows:
+
+| `DataColumn` member | Drives |
+|---------------------|--------|
+| `DataType` | `SqlColumnType` (via inference) |
+| `AllowDBNull` | column nullability |
+| `MaxLength` (> 0, string columns) | `Length` facet |
+
+```csharp
+using var scope = db.CreateConnectionScope();
+await db.CreateTempTableFromAsync("TempImport", dataTable, scope.Connection);
+```
+
 ### Relationship Configuration
 
 DapperForge supports configuring foreign key relationships using either fluent API or attributes.

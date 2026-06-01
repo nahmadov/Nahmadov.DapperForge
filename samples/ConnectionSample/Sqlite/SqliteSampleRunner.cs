@@ -1,3 +1,5 @@
+using System.Data;
+
 using Dapper;
 
 using Nahmadov.DapperForge.Core.Modeling.Schema;
@@ -26,6 +28,7 @@ public class SqliteSampleRunner(SqliteDbContext db)
         await RunDateTimeColumnSamplesAsync();
         await RunStringColumnSamplesAsync();
         await RunTempTableSampleAsync();
+        await RunDataTableTempTableSampleAsync();
 
         Print("=== SQLite sample complete ===\n");
     }
@@ -60,6 +63,30 @@ public class SqliteSampleRunner(SqliteDbContext db)
             @"SELECT COUNT(*) FROM ""TempHistDaily""");
 
         Print($"  Created temp table and inserted rows: {count}");
+        Print("");
+    }
+
+    // ── Temp table from a DataTable (Phase 3) ─────────────────────────────────
+
+    private async Task RunDataTableTempTableSampleAsync()
+    {
+        Print("── Session temp table (from a DataTable) ─────────────────────────");
+
+        // A DataTable is the natural source when the caller already has one for bulk copy.
+        var schema = new DataTable("Import");
+        schema.Columns.Add(new DataColumn("MVSID", typeof(int)) { AllowDBNull = false });
+        schema.Columns.Add(new DataColumn("Value", typeof(double)) { AllowDBNull = false });
+        schema.Columns.Add(new DataColumn("ImportedAt", typeof(DateTime)) { AllowDBNull = false });
+        schema.Columns.Add(new DataColumn("Note", typeof(string)) { MaxLength = 50, AllowDBNull = true });
+
+        using var scope = _db.CreateConnectionScope();
+
+        await _db.CreateTempTableFromAsync("TempImport", schema, scope.Connection);
+
+        var exists = await scope.Connection.ExecuteScalarAsync<long>(
+            @"SELECT COUNT(*) FROM sqlite_temp_master WHERE type='table' AND name='TempImport'");
+
+        Print($"  Derived temp table from DataTable ({schema.Columns.Count} columns); exists in session: {exists == 1}");
         Print("");
     }
 

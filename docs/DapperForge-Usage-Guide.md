@@ -767,6 +767,20 @@ string ddl = db.TempTable("TmpHistDaily").Column<int>("MVSID").BuildCreateTableS
 - `Column(name, type, facets)` sets the type explicitly.
 - **SQL Server** → `CREATE TABLE #TmpHistDaily ( … )`; **SQLite** → `CREATE TEMP TABLE "TmpHistDaily" ( … )`.
 
+#### From a `DataTable`
+
+When you already hold an ADO.NET `DataTable` (e.g. as a bulk-copy source), derive the temp table from
+its schema in one call:
+
+```csharp
+using var scope = db.CreateConnectionScope();
+
+await db.CreateTempTableFromAsync("TempImport", dataTable, scope.Connection);
+```
+
+Each `DataColumn` becomes a temp-table column: the SQL type is inferred from `DataColumn.DataType`,
+nullability from `DataColumn.AllowDBNull`, and string length from `DataColumn.MaxLength` (when > 0).
+
 ### Alternate Keys
 
 ```csharp

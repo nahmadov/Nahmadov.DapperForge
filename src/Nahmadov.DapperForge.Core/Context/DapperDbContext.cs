@@ -185,6 +185,27 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
         => new TempTableBuilder(Dialect, name);
 
     /// <summary>
+    /// Creates a session temp table whose shape is derived from an ADO.NET <see cref="DataTable"/>.
+    /// Each <see cref="DataColumn"/> maps to a column: SQL type inferred from
+    /// <see cref="DataColumn.DataType"/>, nullability from <see cref="DataColumn.AllowDBNull"/>, and
+    /// string length from <see cref="DataColumn.MaxLength"/>.
+    /// </summary>
+    /// <param name="name">The temp-table name (the dialect normalises it).</param>
+    /// <param name="schema">The source table whose columns define the temp-table shape.</param>
+    /// <param name="connection">An open connection to create the temp table on (temp tables are connection-scoped).</param>
+    /// <param name="ct">A cancellation token.</param>
+    /// <exception cref="NotSupportedException">The configured dialect does not support session temp tables.</exception>
+    public Task CreateTempTableFromAsync(string name, DataTable schema, IDbConnection connection, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(schema);
+        ArgumentNullException.ThrowIfNull(connection);
+
+        var builder = TempTable(name);
+        DataTableSchemaReader.Populate(builder, schema);
+        return builder.CreateAsync(connection, ct);
+    }
+
+    /// <summary>
     /// Begins a database transaction with the default isolation level (ReadCommitted).
     /// </summary>
     /// <returns>An <see cref="IDbTransaction"/> wrapping the underlying transaction scope.</returns>

@@ -234,6 +234,13 @@ await db.TempTable("TmpHistDaily")          // SQL Server ensures the leading '#
 - **SQL Server** → `CREATE TABLE #TmpHistDaily ( … )`; **SQLite** → `CREATE TEMP TABLE "TmpHistDaily" ( … )`.
 - Temp tables are connection-scoped — create and use them on the **same** connection (`CreateConnectionScope()`).
 
+Already have a `DataTable`? Derive the temp table directly from its schema:
+
+```csharp
+await db.CreateTempTableFromAsync("TempImport", dataTable, scope.Connection);
+// Each DataColumn → a column: type from DataType, nullability from AllowDBNull, length from MaxLength.
+```
+
 Other dialects throw `NotSupportedException` (`ISqlDialect.SupportsSessionTempTables == false`).
 
 ### Transactions
