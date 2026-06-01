@@ -1,3 +1,6 @@
+using Dapper;
+
+using Nahmadov.DapperForge.Core.Modeling.Schema;
 using Nahmadov.DapperForge.Sqlite.Date;
 
 namespace ConnectionSample.Sqlite;
@@ -22,8 +25,42 @@ public class SqliteSampleRunner(SqliteDbContext db)
 
         await RunDateTimeColumnSamplesAsync();
         await RunStringColumnSamplesAsync();
+        await RunTempTableSampleAsync();
 
         Print("=== SQLite sample complete ===\n");
+    }
+
+    // ── Temp table builder (Phase 2) ──────────────────────────────────────────
+
+    private async Task RunTempTableSampleAsync()
+    {
+        Print("── Session temp table (fluent builder) ───────────────────────────");
+
+        // Temp tables are connection-scoped, so create and use them on the SAME connection.
+        using var scope = _db.CreateConnectionScope();
+
+        var builder = _db.TempTable("TempHistDaily")
+            .Column<int>("MVSID")
+            .Column<int>("HistColID")
+            .Column<DateTime>("HistDate")
+            .Column("Value", SqlColumnType.Decimal, new ColumnTypeFacets(Precision: 18, Scale: 4))
+            .Column<DateTime>("InsertDate", nullable: true);
+
+        Print($"  DDL: {builder.BuildCreateTableSql()}");
+
+        await builder.CreateAsync(scope.Connection);
+
+        // Write to and read back from the temp table on the same connection.
+        await scope.Connection.ExecuteAsync(
+            @"INSERT INTO ""TempHistDaily"" (""MVSID"",""HistColID"",""HistDate"",""Value"",""InsertDate"")
+              VALUES (@MVSID,@HistColID,@HistDate,@Value,@InsertDate)",
+            new { MVSID = 1, HistColID = 10, HistDate = DateTime.Today, Value = 42.5m, InsertDate = (DateTime?)null });
+
+        var count = await scope.Connection.ExecuteScalarAsync<long>(
+            @"SELECT COUNT(*) FROM ""TempHistDaily""");
+
+        Print($"  Created temp table and inserted rows: {count}");
+        Print("");
     }
 
     // ── Seed ─────────────────────────────────────────────────────────────────

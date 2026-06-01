@@ -212,6 +212,30 @@ var result = await db.Products.BulkMergeAsync(
 | `InsertOnly` | Only insert rows that don't exist |
 | `UpdateOnly` | Only update existing rows |
 
+### Session Temp Tables
+
+Create a session temp table without hand-writing DDL. Column types come from the same mapping
+metadata DapperForge already owns, so the temp shape stays in sync with your entities.
+
+```csharp
+using var scope = db.CreateConnectionScope();
+
+await db.TempTable("TmpHistDaily")          // SQL Server ensures the leading '#'
+    .Column<int>("MVSID")
+    .Column<int>("HistColID")
+    .Column<DateTime>("HistDate")
+    .Column("Value", SqlColumnType.Decimal, new ColumnTypeFacets(Precision: 18, Scale: 4))
+    .Column<DateTime>("InsertDate", nullable: true)
+    .CreateAsync(scope.Connection);
+```
+
+- `Column<T>(...)` infers the SQL type from the CLR type; `Column(name, type, facets)` is explicit.
+- `BuildCreateTableSql()` returns the `CREATE [TEMP] TABLE` statement without executing it.
+- **SQL Server** → `CREATE TABLE #TmpHistDaily ( … )`; **SQLite** → `CREATE TEMP TABLE "TmpHistDaily" ( … )`.
+- Temp tables are connection-scoped — create and use them on the **same** connection (`CreateConnectionScope()`).
+
+Other dialects throw `NotSupportedException` (`ISqlDialect.SupportsSessionTempTables == false`).
+
 ### Transactions
 
 ```csharp
@@ -297,6 +321,26 @@ public class Customer
 ### Key Detection
 
 Keys are resolved in order: `[Key]` attribute, fluent `HasKey()`, property named `Id`, or property named `{TypeName}Id`.
+
+### Column Types
+
+DapperForge resolves each column's SQL type from a dialect-agnostic `SqlColumnType` enum. By default
+the type is **inferred** from the CLR property type (`int→Int`, `decimal→Decimal`, `DateTime→DateTime2`,
+`string→NVarChar`, `byte[]→VarBinary`, `Nullable<T>`→underlying type marked nullable). Override it
+explicitly when needed:
+
+```csharp
+modelBuilder.Entity<Invoice>(b =>
+{
+    b.Property(i => i.Code).HasColumnType(SqlColumnType.VarChar, 50);     // length facet
+    b.Property(i => i.Amount).HasColumnType(SqlColumnType.Decimal, 18, 4); // precision/scale
+    b.Property(i => i.Notes).HasColumnType(SqlColumnType.Text);
+});
+```
+
+These types drive the temp-table and bulk-copy APIs. SQL Server resolves to concrete types
+(`nvarchar(50)`, `decimal(18,4)`, …); SQLite resolves to storage affinities (`INTEGER`, `REAL`,
+`NUMERIC`, `TEXT`, `BLOB`).
 
 ---
 

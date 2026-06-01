@@ -12,6 +12,7 @@ using Nahmadov.DapperForge.Core.Abstractions;
 using Nahmadov.DapperForge.Core.Modeling.Mapping;
 using Nahmadov.DapperForge.Core.Querying.Execution;
 using Nahmadov.DapperForge.Core.Querying.Sql;
+using Nahmadov.DapperForge.Core.Schema;
 
 namespace Nahmadov.DapperForge.Core.Context;
 /// <summary>
@@ -168,6 +169,20 @@ public abstract class DapperDbContext : IDapperDbContext, IDisposable
     {
         return _connectionManager.CreateConnectionScope();
     }
+
+    /// <summary>
+    /// Gets the SQL dialect configured for this context.
+    /// </summary>
+    internal ISqlDialect Dialect => _options.Dialect!;
+
+    /// <summary>
+    /// Starts a fluent builder for declaring and creating a session temp table without raw DDL.
+    /// </summary>
+    /// <param name="name">The temp-table name (the dialect normalises it, e.g. ensuring a leading <c>#</c> on SQL Server).</param>
+    /// <returns>A builder to add columns and create the table.</returns>
+    /// <exception cref="NotSupportedException">The configured dialect does not support session temp tables.</exception>
+    public ITempTableBuilder TempTable(string name)
+        => new TempTableBuilder(Dialect, name);
 
     /// <summary>
     /// Begins a database transaction with the default isolation level (ReadCommitted).

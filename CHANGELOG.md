@@ -10,6 +10,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Enum-based SQL column type system** — DapperForge now knows a column's SQL *type*, not just its name. New dialect-agnostic `SqlColumnType` enum and immutable `ColumnTypeFacets` (length/precision/scale/nullability), automatic CLR→`SqlColumnType` inference (e.g. `int→Int`, `decimal→Decimal`, `DateTime→DateTime2`, `string→NVarChar`, `byte[]→VarBinary`, `Nullable<T>`→underlying + nullable), and `PropertyBuilder.HasColumnType(...)` overrides. Each dialect resolves the enum to concrete DDL via `ISqlDialect.GetColumnTypeSql(...)` — SQL Server emits real types (`nvarchar(50)`, `decimal(18,4)`, `datetime2`, …), SQLite emits storage affinities (`INTEGER`/`REAL`/`NUMERIC`/`TEXT`/`BLOB`). Other dialects throw `NotSupportedException`.
+- **Fluent session temp-table builder** — `context.TempTable("name").Column<int>(...).Column("Amount", SqlColumnType.Decimal, ...).CreateAsync(connection)` creates a session temp table without raw DDL, driven by the same column-type system. SQL Server emits `CREATE TABLE #Name ( … )` (ensuring the `#` prefix); SQLite emits `CREATE TEMP TABLE "Name" ( … )`. `BuildCreateTableSql()` returns the DDL without executing. Unsupported dialects surface `NotSupportedException` / `ISqlDialect.SupportsSessionTempTables == false`.
 - **SQLite dialect** (`Nahmadov.DapperForge.Sqlite`) — new provider package backed by `Microsoft.Data.Sqlite`. Supports `"identifier"` quoting, `@param` placeholders, `last_insert_rowid()` for identity retrieval, and automatic IN-clause batching (max 999 parameters per statement).
 
 ### Changed

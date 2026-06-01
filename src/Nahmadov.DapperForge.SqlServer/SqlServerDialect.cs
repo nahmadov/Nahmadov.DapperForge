@@ -111,6 +111,26 @@ public class SqlServerDialect : ISqlDialect, IBulkSqlDialect
     private static string Scale(ColumnTypeFacets facets, int fallback)
         => (facets.Scale ?? fallback).ToString(CultureInfo.InvariantCulture);
 
+    /// <inheritdoc />
+    public bool SupportsSessionTempTables => true;
+
+    /// <summary>
+    /// Ensures the temp-table name carries the leading <c>#</c> that scopes it to the session.
+    /// </summary>
+    public string FormatTempTableName(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            throw new ArgumentException("Temp table name cannot be empty.", nameof(name));
+
+        return name.StartsWith('#') ? name : "#" + name;
+    }
+
+    /// <summary>
+    /// Builds a SQL Server session temp table: <c>CREATE TABLE #Name ( … )</c>.
+    /// </summary>
+    public string BuildCreateTempTable(string tempName, string columnsDdl)
+        => $"CREATE TABLE {tempName} ({columnsDdl})";
+
     #region IBulkSqlDialect Implementation
 
     /// <inheritdoc />

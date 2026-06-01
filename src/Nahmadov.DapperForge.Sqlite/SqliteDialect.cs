@@ -121,4 +121,25 @@ public class SqliteDialect : ISqlDialect
             _ => throw new NotSupportedException($"Unsupported SQL column type '{type}' for SQLite.")
         };
     }
+
+    /// <inheritdoc />
+    public bool SupportsSessionTempTables => true;
+
+    /// <summary>
+    /// Returns the quoted temp-table name. SQLite scopes temp tables via <c>CREATE TEMP TABLE</c>,
+    /// so no name prefix is required.
+    /// </summary>
+    public string FormatTempTableName(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            throw new ArgumentException("Temp table name cannot be empty.", nameof(name));
+
+        return QuoteIdentifier(name);
+    }
+
+    /// <summary>
+    /// Builds a SQLite session temp table: <c>CREATE TEMP TABLE "Name" ( … )</c>.
+    /// </summary>
+    public string BuildCreateTempTable(string tempName, string columnsDdl)
+        => $"CREATE TEMP TABLE {tempName} ({columnsDdl})";
 }

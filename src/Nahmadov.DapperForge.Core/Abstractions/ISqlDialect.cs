@@ -43,6 +43,32 @@ public interface ISqlDialect
         => throw new NotSupportedException(
             $"Dialect '{Name}' does not support SQL column type resolution.");
 
+    // ── Session temp tables ───────────────────────────────────────────────────
+
+    /// <summary>
+    /// Indicates whether the dialect supports runtime-created session temp tables.
+    /// Defaults to <see langword="false"/>; SQL Server and SQLite override to <see langword="true"/>.
+    /// </summary>
+    bool SupportsSessionTempTables => false;
+
+    /// <summary>
+    /// Normalises a caller-supplied temp-table name to the dialect's required form
+    /// (e.g. SQL Server ensures a leading <c>#</c>; SQLite quotes the bare name).
+    /// </summary>
+    string FormatTempTableName(string name)
+        => throw new NotSupportedException(
+            $"Dialect '{Name}' does not support session temp tables.");
+
+    /// <summary>
+    /// Wraps a pre-built, comma-separated column DDL fragment in the dialect's
+    /// <c>CREATE [TEMP] TABLE</c> statement.
+    /// </summary>
+    /// <param name="tempName">The formatted temp-table name (from <see cref="FormatTempTableName"/>).</param>
+    /// <param name="columnsDdl">Comma-separated column definitions, e.g. <c>"Id" int NOT NULL, ...</c>.</param>
+    string BuildCreateTempTable(string tempName, string columnsDdl)
+        => throw new NotSupportedException(
+            $"Dialect '{Name}' does not support session temp tables.");
+
     // ── Predicate translator factory ──────────────────────────────────────────
 
     /// <summary>

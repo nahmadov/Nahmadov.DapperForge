@@ -798,6 +798,73 @@ public class AuditLog
 3. Property named `{TypeName}Id`
 4. Alternate keys with `HasAlternateKey()`
 
+### Column Types
+
+Every mapped property carries a logical SQL type expressed as the dialect-agnostic `SqlColumnType`
+enum plus `ColumnTypeFacets` (`Length`, `Precision`, `Scale`, `IsNullable`). The type is resolved in
+this order:
+
+1. **Explicit** — `PropertyBuilder.HasColumnType(type)` / `HasColumnType(type, length)` / `HasColumnType(type, precision, scale)`.
+2. **Inferred** — from the CLR property type when no explicit type is configured.
+
+**CLR → `SqlColumnType` inference:**
+
+| CLR type | `SqlColumnType` | Notes |
+|----------|-----------------|-------|
+| `bool` | `Boolean` | |
+| `byte` / `short` / `int` / `long` | `TinyInt` / `SmallInt` / `Int` / `BigInt` | |
+| `decimal` | `Decimal` | precision 18, scale 2 |
+| `double` / `float` | `Float` / `Real` | |
+| `DateTime` | `DateTime2` | |
+| `DateOnly` / `TimeOnly` / `DateTimeOffset` | `Date` / `Time` / `DateTimeOffset` | |
+| `Guid` | `Guid` | |
+| `string` | `NVarChar` | length from `HasMaxLength`, else MAX |
+| `byte[]` | `VarBinary` | MAX |
+| `Nullable<T>` | underlying type | `IsNullable = true` |
+| `enum` | underlying integral type | |
+
+**Dialect resolution** (`ISqlDialect.GetColumnTypeSql(type, facets)`):
+
+| `SqlColumnType` | SQL Server | SQLite (affinity) |
+|-----------------|-----------|-------------------|
+| `Int` / `BigInt` / `Boolean` / `TinyInt` / `SmallInt` | `int` / `bigint` / `bit` / `tinyint` / `smallint` | `INTEGER` |
+| `Decimal(p,s)` / `Money` | `decimal(p,s)` / `money` | `NUMERIC` |
+| `Float` / `Real` | `float` / `real` | `REAL` |
+| `Date` / `Time` / `DateTime` / `DateTime2` / `DateTimeOffset` | `date` / `time` / `datetime` / `datetime2` / `datetimeoffset` | `TEXT` |
+| `NVarChar(n)` / `NVarChar(MAX)` / `Text` | `nvarchar(n)` / `nvarchar(max)` / `nvarchar(max)` | `TEXT` |
+| `VarBinary` / `Binary` | `varbinary(max)` / `binary(n)` | `BLOB` |
+| `Guid` | `uniqueidentifier` | `TEXT` |
+
+Dialects that do not implement `GetColumnTypeSql` (e.g. Oracle) throw `NotSupportedException`.
+
+### Session Temp Tables
+
+`DapperDbContext.TempTable(name)` returns an `ITempTableBuilder` for declaring and creating a session
+temp table without raw DDL. The builder reuses the column-type system above. Supported on SQL Server
+and SQLite; other dialects (where `ISqlDialect.SupportsSessionTempTables == false`) throw
+`NotSupportedException`.
+
+```csharp
+using var scope = db.CreateConnectionScope();   // temp tables are connection-scoped
+
+await db.TempTable("TmpHistDaily")
+    .Column<int>("MVSID")                         // inferred type
+    .Column("Value", SqlColumnType.Decimal, new ColumnTypeFacets(Precision: 18, Scale: 4)) // explicit
+    .Column<DateTime>("InsertDate", nullable: true)
+    .CreateAsync(scope.Connection);
+```
+
+| Member | Description |
+|--------|-------------|
+| `Column<T>(name, nullable = false)` | Adds a column with type inferred from `T`. A nullable CLR type also implies nullable. |
+| `Column(name, type, facets = default)` | Adds a column with an explicit `SqlColumnType` and facets. |
+| `BuildCreateTableSql()` | Returns the `CREATE [TEMP] TABLE` statement without executing it. |
+| `CreateAsync(IDbConnection, ct)` | Executes the DDL on the given open connection. |
+| `CreateAsync(IConnectionScope, ct)` | Executes the DDL on the scope's connection. |
+
+**Generated DDL** — SQL Server: `CREATE TABLE #TmpHistDaily ( … )` (leading `#` is ensured);
+SQLite: `CREATE TEMP TABLE "TmpHistDaily" ( … )`.
+
 ### Relationship Configuration
 
 DapperForge supports configuring foreign key relationships using either fluent API or attributes.

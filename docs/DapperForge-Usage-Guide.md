@@ -719,6 +719,54 @@ using (var connectionScope = db.CreateConnectionScope())
 }
 ```
 
+### Column Types
+
+DapperForge resolves each column's SQL type from a dialect-agnostic `SqlColumnType` enum. The type is
+inferred from the CLR property type by default; override it with `HasColumnType(...)`:
+
+```csharp
+modelBuilder.Entity<Invoice>(b =>
+{
+    b.Property(i => i.Code).HasColumnType(SqlColumnType.VarChar, 50);      // length facet
+    b.Property(i => i.Amount).HasColumnType(SqlColumnType.Decimal, 18, 4); // precision/scale
+    b.Property(i => i.Notes).HasColumnType(SqlColumnType.Text);
+});
+```
+
+Inference defaults: `bool→Boolean`, `byte→TinyInt`, `short→SmallInt`, `int→Int`, `long→BigInt`,
+`decimal→Decimal(18,2)`, `double→Float`, `float→Real`, `DateTime→DateTime2`, `DateOnly→Date`,
+`TimeOnly→Time`, `DateTimeOffset→DateTimeOffset`, `Guid→Guid`, `string→NVarChar` (length from
+`HasMaxLength`, else MAX), `byte[]→VarBinary(MAX)`, `Nullable<T>`→underlying type marked nullable.
+
+The resolved types drive the temp-table and bulk-copy APIs. SQL Server emits concrete DDL types
+(`nvarchar(50)`, `decimal(18,4)`, `datetime2`, …); SQLite emits storage affinities (`INTEGER`,
+`REAL`, `NUMERIC`, `TEXT`, `BLOB`).
+
+### Session Temp Tables
+
+Create a session temp table from a fluent builder instead of hand-written DDL. Available on SQL
+Server and SQLite (other dialects throw `NotSupportedException`).
+
+```csharp
+// Temp tables are connection-scoped — create and use them on the SAME connection.
+using var scope = db.CreateConnectionScope();
+
+await db.TempTable("TmpHistDaily")           // SQL Server ensures the leading '#'
+    .Column<int>("MVSID")
+    .Column<int>("HistColID")
+    .Column<DateTime>("HistDate")
+    .Column("Value", SqlColumnType.Decimal, new ColumnTypeFacets(Precision: 18, Scale: 4))
+    .Column<DateTime>("InsertDate", nullable: true)
+    .CreateAsync(scope.Connection);
+
+// Inspect the DDL without executing it:
+string ddl = db.TempTable("TmpHistDaily").Column<int>("MVSID").BuildCreateTableSql();
+```
+
+- `Column<T>(name, nullable)` infers the SQL type from `T`; a nullable CLR type (e.g. `int?`) also implies nullable.
+- `Column(name, type, facets)` sets the type explicitly.
+- **SQL Server** → `CREATE TABLE #TmpHistDaily ( … )`; **SQLite** → `CREATE TEMP TABLE "TmpHistDaily" ( … )`.
+
 ### Alternate Keys
 
 ```csharp
